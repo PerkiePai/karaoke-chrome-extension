@@ -49,6 +49,36 @@ Measured share of search results carrying `syncedLyrics`:
 
 Thai coverage is real. Misses are a case to handle, not the default.
 
+### Correction (2026-08-15, after Sprint 2 acceptance testing)
+
+**The table above measures the wrong thing.** It counts how many results carry
+synced lyrics — not whether our pipeline can *find* a given song. Real testing
+found 4 of 5 Thai songs returning "No lyrics found", and the cause is not
+coverage:
+
+**LRCLIB's `/api/search` cannot tokenize Thai script.** Verified directly:
+`q=ใจสั่งมา` returns **0 results** while that exact track is in the database with
+synced lyrics (it appears in the `q=Loso` listing). Same for `จักรยานสีแดง`.
+Latin-only queries work; Thai-only queries always return nothing.
+`/api/get` is no alternative — it is a strict exact-match lookup requiring album
+and duration, and 404s for tracks that provably exist.
+
+The workable strategy, validated against the live API: **query with the Latin
+tokens only, then match the Thai track name locally.** Querying `q=Loso` returns
+the artist's catalogue with Thai track names intact, and the existing NFC +
+Levenshtein scorer then identifies them at 0.950.
+
+Two further findings from the same session:
+
+- **Thai video titles frequently run `Song - Artist`**, reversed from the Western
+  `Artist - Song` convention (`คืนจันทร์ - LOSO`). Both orderings must be tried.
+- **The 0.55 threshold is too permissive when duration is unavailable.** With a
+  matching artist and `durationSec: null`, the score floor is already
+  `0.3 + 0.1 + 0.05 = 0.45`, so any track similarity above ~0.2 clears the bar.
+  Measured: a song genuinely absent from LRCLIB matched an unrelated track by the
+  same artist at 0.561. A minimum track-name similarity gate is required, or
+  fixing the query strategy converts "not found" into *silently wrong lyrics*.
+
 CORS was confirmed against a `youtube.com` origin:
 
 ```
@@ -163,6 +193,28 @@ content script listens for `yt-navigate-finish`, with a videoId poll as a
 backup signal, then tears down and re-mounts. `#secondary` is recreated on
 navigation and the `<video>` element is reused with a new src. Getting this
 wrong is the most common way extensions of this kind break.
+
+### Correction (2026-08-15, after Sprint 2 acceptance testing)
+
+**Detection must be self-correcting, not one-shot.** Observed in real use: the
+previous video's lyrics persist after clicking through to a new video, and never
+recover without a full page reload.
+
+YouTube updates its various DOM signals at different moments. Guarding detection
+against `ytd-watch-flexy[video-id]` was not enough, because that attribute flips
+to the new video while the `<h1>` heading still holds the previous title — the
+identity check passes and the stale heading is read anyway. Guarding one element
+pair against another is a guess about YouTube's internal update order, which is
+unversioned and will keep changing.
+
+The permanence is the worse half: because `onLocationChanged` returns early when
+`videoId === currentVideoId`, the `yt-navigate-finish` that arrives *after* the
+heading updates does nothing. A single bad read is final.
+
+**Required behavior:** the content script remembers the raw title it acted on. If
+the title for the current video later differs from that, it re-runs the lookup.
+This self-corrects regardless of which DOM element lags, instead of depending on
+knowing which one does.
 
 ## Persistence
 
