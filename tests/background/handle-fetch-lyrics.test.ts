@@ -78,3 +78,78 @@ describe('handleFetchLyrics', () => {
     expect(result).toMatchObject({ ok: false, reason: 'network' });
   });
 });
+
+describe('handleFetchLyrics with alternate readings', () => {
+  const thai: LrclibRecord = {
+    id: 500,
+    trackName: 'คืนจันทร์',
+    artistName: 'Loso',
+    albumName: null,
+    duration: 240,
+    instrumental: false,
+    plainLyrics: 'x',
+    syncedLyrics: '[00:01.00]x',
+  };
+
+  it('searches with the Latin token only, not the Thai text', async () => {
+    const queries: string[] = [];
+    await handleFetchLyrics(
+      { type: 'FETCH_LYRICS', videoId: 'v', artist: 'คืนจันทร์', track: 'LOSO', durationSec: 240 },
+      async (q) => {
+        queries.push(q);
+        return [thai];
+      },
+    );
+    expect(queries).toEqual(['LOSO']);
+  });
+
+  it('matches via the swapped reading when the primary one is backwards', async () => {
+    const result = await handleFetchLyrics(
+      {
+        type: 'FETCH_LYRICS',
+        videoId: 'v',
+        artist: 'คืนจันทร์',
+        track: 'LOSO',
+        durationSec: 240,
+        alternates: [{ artist: 'LOSO', track: 'คืนจันทร์' }],
+      },
+      async () => [thai],
+    );
+    expect(result).toEqual({ ok: true, record: thai });
+  });
+
+  it('issues exactly one search no matter how many readings are offered', async () => {
+    let calls = 0;
+    await handleFetchLyrics(
+      {
+        type: 'FETCH_LYRICS',
+        videoId: 'v',
+        artist: 'คืนจันทร์',
+        track: 'LOSO',
+        durationSec: 240,
+        alternates: [{ artist: 'LOSO', track: 'คืนจันทร์' }],
+      },
+      async () => {
+        calls += 1;
+        return [thai];
+      },
+    );
+    expect(calls).toBe(1);
+  });
+
+  it('reports not-found when no reading clears the gates', async () => {
+    const unrelated: LrclibRecord = { ...thai, id: 501, trackName: 'ครึ่งทาง' };
+    const result = await handleFetchLyrics(
+      {
+        type: 'FETCH_LYRICS',
+        videoId: 'v',
+        artist: 'คืนจันทร์',
+        track: 'LOSO',
+        durationSec: null,
+        alternates: [{ artist: 'LOSO', track: 'คืนจันทร์' }],
+      },
+      async () => [unrelated],
+    );
+    expect(result).toMatchObject({ ok: false, reason: 'not-found' });
+  });
+});

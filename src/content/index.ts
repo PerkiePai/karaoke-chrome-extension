@@ -3,7 +3,7 @@ import { detectSong, type DetectedSong } from './song-detector';
 import { decideReconcile } from './reconcile';
 import { planRender } from './render-plan';
 import { parseVideoId } from '../core/youtube-url';
-import { normalizeTitle } from '../core/title-normalizer';
+import { normalizeTitleCandidates } from '../core/title-normalizer';
 import type { FetchLyricsRequest, FetchLyricsResponse } from '../messaging/types';
 
 const SECONDARY_SELECTOR = '#secondary';
@@ -100,15 +100,17 @@ async function load(videoId: string, gen: number): Promise<void> {
     // as a change and triggers a reload.
     renderedTitle = song.rawTitle;
 
-    const { artist, track } = normalizeTitle(song.rawTitle);
-    panel.setHeader(track, artist ?? 'unknown artist');
+    const readings = normalizeTitleCandidates(song.rawTitle);
+    const primary = readings[0]!;
+    panel.setHeader(primary.track, primary.artist ?? 'unknown artist');
 
     const request: FetchLyricsRequest = {
       type: 'FETCH_LYRICS',
       videoId,
-      artist,
-      track,
+      artist: primary.artist,
+      track: primary.track,
       durationSec: song.durationSec,
+      alternates: readings.slice(1),
     };
 
     let response: FetchLyricsResponse;
