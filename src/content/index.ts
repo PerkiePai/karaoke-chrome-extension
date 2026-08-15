@@ -2,6 +2,7 @@ import { mountPanel, type PanelHandle } from './panel';
 import { detectSong, type DetectedSong } from './song-detector';
 import { decideReconcile } from './reconcile';
 import { planRender } from './render-plan';
+import { startSyncLoop, type SyncLoopHandle } from './sync-loop';
 import { parseVideoId } from '../core/youtube-url';
 import { normalizeTitleCandidates } from '../core/title-normalizer';
 import type { FetchLyricsRequest, FetchLyricsResponse } from '../messaging/types';
@@ -24,9 +25,28 @@ let isLoading = false;
  */
 let generation = 0;
 
+/**
+ * Cleanup for resources tied to whatever is currently displayed (today, just
+ * the sync loop). Registered where the resource is created; run wherever that
+ * display is about to be replaced — `teardown` (navigation) and `load` (a
+ * same-video reload) both qualify, so this is centralized rather than
+ * duplicated as an ad-hoc nullable variable at each call site.
+ */
+let disposers: Array<() => void> = [];
+
+function addDisposer(dispose: () => void): void {
+  disposers.push(dispose);
+}
+
+function disposeAll(): void {
+  for (const dispose of disposers) dispose();
+  disposers = [];
+}
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function teardown(): void {
+  disposeAll();
   panel?.destroy();
   panel = null;
   renderedTitle = null;
@@ -136,8 +156,20 @@ async function load(videoId: string, gen: number): Promise<void> {
     panel.setHeader(record.trackName, record.artistName);
 
     const plan = planRender(record);
+
+    // A previous load's sync loop (if any) is tied to lyrics we are about to
+    // replace — stop it exactly when the content it drove stops being shown.
+    disposeAll();
     panel.setStatus(plan.status);
     panel.setLines(plan.lines);
+
+    if (plan.synced) {
+      const video = document.querySelector('video');
+      if (video) {
+        const syncLoop: SyncLoopHandle = startSyncLoop(video, panel, plan.lines);
+        addDisposer(syncLoop.stop);
+      }
+    }
   } finally {
     if (gen === generation) isLoading = false;
   }
