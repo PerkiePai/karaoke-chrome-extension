@@ -57,3 +57,53 @@ describe('detectSong', () => {
     expect(detectSong(doc)?.durationSec).toBe(258);
   });
 });
+
+// YouTube pushes the new URL before it swaps the DOM, so a poll can read the
+// PREVIOUS video's title under the new id. Detection has to check the page's
+// own id to tell the two apart.
+describe('detectSong video id check', () => {
+  const heading = (title: string) =>
+    `<h1 class="ytd-watch-metadata"><yt-formatted-string>${title}</yt-formatted-string></h1>`;
+
+  it('accepts the title when ytd-watch-flexy reports the expected id', () => {
+    const doc = pageWith(`<ytd-watch-flexy video-id="bbb">${heading('New - Song')}</ytd-watch-flexy>`);
+    expect(detectSong(doc, 'bbb')?.rawTitle).toBe('New - Song');
+  });
+
+  it('accepts the title when the canonical link reports the expected id', () => {
+    const doc = pageWith(heading('New - Song'));
+    document.head.innerHTML =
+      '<link rel="canonical" href="https://www.youtube.com/watch?v=bbb">';
+    expect(detectSong(doc, 'bbb')?.rawTitle).toBe('New - Song');
+  });
+
+  it('rejects a stale title while the page still reports the previous id', () => {
+    const doc = pageWith(`<ytd-watch-flexy video-id="aaa">${heading('Old - Song')}</ytd-watch-flexy>`);
+    document.head.innerHTML =
+      '<link rel="canonical" href="https://www.youtube.com/watch?v=aaa">';
+    expect(detectSong(doc, 'bbb')).toBeNull();
+  });
+
+  it('accepts when either source matches, since the markup shifts', () => {
+    const doc = pageWith(`<ytd-watch-flexy video-id="aaa">${heading('New - Song')}</ytd-watch-flexy>`);
+    document.head.innerHTML =
+      '<link rel="canonical" href="https://www.youtube.com/watch?v=bbb">';
+    expect(detectSong(doc, 'bbb')?.rawTitle).toBe('New - Song');
+  });
+
+  it('accepts when the page publishes no id at all, leaving the caller timeout as the guard', () => {
+    const doc = pageWith(heading('New - Song'));
+    expect(detectSong(doc, 'bbb')?.rawTitle).toBe('New - Song');
+  });
+
+  it('ignores a canonical link that is not a watch URL', () => {
+    const doc = pageWith(heading('New - Song'));
+    document.head.innerHTML = '<link rel="canonical" href="https://example.com/watch?v=bbb">';
+    expect(detectSong(doc, 'bbb')?.rawTitle).toBe('New - Song');
+  });
+
+  it('does not check identity when no expected id is given', () => {
+    const doc = pageWith(`<ytd-watch-flexy video-id="aaa">${heading('Old - Song')}</ytd-watch-flexy>`);
+    expect(detectSong(doc)?.rawTitle).toBe('Old - Song');
+  });
+});
