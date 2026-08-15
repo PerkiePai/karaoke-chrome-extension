@@ -3,6 +3,17 @@ export interface ParsedTitle {
   track: string;
 }
 
+/**
+ * `X 【…】 X` / `X […] X` / `X (…) X` -> `X`.
+ *
+ * YouTube uploaders often append the channel name after a bracketed tag, so the
+ * artist ends up twice once the tag is stripped. Requiring a bracketed run
+ * BETWEEN the two copies is what keeps this from eating "Bye Bye Bye".
+ * Capped at four words, and applied before noise stripping removes the brackets.
+ */
+const DUPLICATED_ACROSS_BRACKETS =
+  /(\S+(?:\s+\S+){0,3})\s*(?:【[^】]*】|\[[^\]]*\]|\([^)]*\))\s*\1\s*$/i;
+
 // Bracketed promo tags. Note the absence of live/acoustic/cover/remix:
 // the match scorer relies on those surviving.
 const BRACKETED_NOISE =
@@ -34,6 +45,9 @@ const EDGE_JUNK = /^[-–—|:\s]+|[-–—|:\s]+$/g;
 /** Turns a raw YouTube video title into a best-guess artist and track. */
 export function normalizeTitle(rawTitle: string): ParsedTitle {
   let text = rawTitle.normalize('NFC');
+
+  // Must run before the bracket strippers: the brackets are the evidence.
+  text = text.replace(DUPLICATED_ACROSS_BRACKETS, '$1');
 
   text = text.replace(CJK_BRACKETED_NOISE, ' ');
   text = text.replace(BRACKETED_NOISE, ' ');

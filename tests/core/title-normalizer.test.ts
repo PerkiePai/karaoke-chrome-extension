@@ -130,4 +130,32 @@ describe('normalizeTitle', () => {
       track: 'เรา - Live',
     });
   });
+
+  it('collapses a channel name repeated across bracketed noise', () => {
+    expect(normalizeTitle('คืนจันทร์ - LOSO 【OFFICIAL MV】LOSO')).toEqual({
+      artist: 'คืนจันทร์',
+      track: 'LOSO',
+    });
+  });
+
+  it('collapses a repeated multi-word channel name', () => {
+    expect(normalizeTitle('เปิดตัวเขา - Three Man Down [Official MV] Three Man Down')).toEqual({
+      artist: 'เปิดตัวเขา',
+      track: 'Three Man Down',
+    });
+  });
+
+  it('keeps a legitimately repeated word when no bracket separates the copies', () => {
+    expect(normalizeTitle('NSYNC - Bye Bye Bye')).toEqual({
+      artist: 'NSYNC',
+      track: 'Bye Bye Bye',
+    });
+  });
+
+  it('keeps a doubled word that is genuinely part of the track name', () => {
+    expect(normalizeTitle('John Lee Hooker - Boom Boom')).toEqual({
+      artist: 'John Lee Hooker',
+      track: 'Boom Boom',
+    });
+  });
 });
