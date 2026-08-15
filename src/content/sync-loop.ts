@@ -47,6 +47,7 @@ export function startSyncLoop(video: HTMLVideoElement, panel: PanelHandle, lines
   video.addEventListener('seeked', apply);
   panel.onManualScroll(handleManualScroll);
 
+  apply();                          // reflect the current position immediately
   if (!video.paused) handlePlay();
 
   return {

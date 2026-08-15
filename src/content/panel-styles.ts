@@ -22,14 +22,18 @@ export const PANEL_STYLES = `
     /* Generous top/bottom padding lets scrollIntoView({block:'center'})
        actually center lines near the start or end of the list, not just
        ones in the middle — the scroll container needs room to move past
-       its own content bounds. */
-    padding: 40% 0;
+       its own content bounds. A vh unit keeps this sized to the viewport
+       instead of the (much narrower) container width. */
+    padding: 30vh 0;
     overflow-y: auto;
     scroll-behavior: smooth;
     font-size: 14px;
     line-height: 1.9;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
     mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  }
+  .kx-lines:empty {
+    padding: 0;
   }
   .kx-line {
     color: #a7a7a7;

@@ -68,6 +68,16 @@ describe('startSyncLoop', () => {
     expect(raf.pendingCount()).toBe(0);
   });
 
+  it('applies the initial highlight immediately for a paused video, without starting a rAF chain', () => {
+    const v = video();
+    const panel = mockPanel();
+    Object.defineProperty(v, 'currentTime', { value: 1.2, configurable: true });
+    startSyncLoop(v, panel, LINES);
+    expect(panel.setActiveLine).toHaveBeenCalledTimes(1);
+    expect(panel.setActiveLine).toHaveBeenCalledWith(1, true);
+    expect(raf.pendingCount()).toBe(0);
+  });
+
   it('schedules a frame immediately for a video already playing', () => {
     const v = video();
     Object.defineProperty(v, 'paused', { value: false, configurable: true });
