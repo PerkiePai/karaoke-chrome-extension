@@ -147,6 +147,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     if (gen !== generation || !panel) return;
 
     if (!response.ok) {
+      disposeAll();
       panel.setStatus(response.message);
       panel.setLines([]);
       return;
