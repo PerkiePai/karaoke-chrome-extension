@@ -107,11 +107,22 @@ export function scoreCandidates(
     .sort((a, b) => b.score - a.score);
 }
 
+/**
+ * True when a record can actually put lyrics on screen. Records that cannot are
+ * excluded outright rather than penalised: a karaoke/instrumental cut with a
+ * closer duration otherwise outscores the vocal record it sits beside, and the
+ * weights are verified constants that must not be re-tuned.
+ */
+export function hasUsableLyrics(record: LrclibRecord): boolean {
+  if (record.instrumental) return false;
+  return Boolean(record.syncedLyrics?.trim() || record.plainLyrics?.trim());
+}
+
 export function pickBestMatch(
   input: MatchInput,
   candidates: LrclibRecord[],
 ): LrclibRecord | null {
-  const best = scoreCandidates(input, candidates)[0];
+  const best = scoreCandidates(input, candidates.filter(hasUsableLyrics))[0];
   if (!best || best.score < MATCH_THRESHOLD) return null;
   return best.record;
 }

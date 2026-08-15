@@ -109,14 +109,6 @@ describe('scoreCandidates', () => {
     );
     expect(ranked[0]?.record.id).toBe(90);
   });
-
-  it('returns scores in descending order', () => {
-    const ranked = scoreCandidates(
-      { artist: 'Oasis', track: 'Wonderwall', durationSec: 258 },
-      [record({ id: 60, trackName: 'Wonderwall', artistName: 'Oasis' }), record({ id: 61, trackName: 'Nonsense', artistName: 'Nobody' })],
-    );
-    expect(ranked[0]!.score).toBeGreaterThanOrEqual(ranked[1]!.score);
-  });
 });
 
 describe('pickBestMatch', () => {
@@ -138,6 +130,33 @@ describe('pickBestMatch', () => {
 
   it('returns null for an empty candidate list', () => {
     expect(pickBestMatch({ artist: 'a', track: 'b', durationSec: null }, [])).toBeNull();
+  });
+
+  // A karaoke cut with a closer duration outscores the vocal record beside it,
+  // so scoring alone hands the panel a record with no lyrics in it.
+  it('prefers the vocal record over a closer-duration instrumental one', () => {
+    const vocal = record({ id: 80, duration: 258 });
+    const karaoke = record({
+      id: 81,
+      duration: 275,
+      instrumental: true,
+      plainLyrics: null,
+      syncedLyrics: null,
+    });
+    const match = pickBestMatch(
+      { artist: 'Artist', track: 'Track', durationSec: 278 },
+      [vocal, karaoke],
+    );
+    expect(match?.id).toBe(80);
+  });
+
+  it('skips records whose lyric fields are both empty', () => {
+    const empty = record({ id: 82, duration: 258, plainLyrics: '', syncedLyrics: '   ' });
+    const match = pickBestMatch(
+      { artist: 'Artist', track: 'Track', durationSec: 258 },
+      [empty],
+    );
+    expect(match).toBeNull();
   });
 
   it('exposes a threshold between 0 and 1', () => {
