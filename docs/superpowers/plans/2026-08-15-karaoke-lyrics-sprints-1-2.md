@@ -51,10 +51,12 @@ Run in the project root:
 
 ```bash
 npm init -y
-npm install -D vite typescript vitest jsdom cross-env @types/chrome
+npm install -D vite typescript vitest jsdom cross-env @types/chrome @types/node
 ```
 
 `cross-env` is required because the build passes a `TARGET` environment variable, and `TARGET=x command` is Bash syntax that does not work in PowerShell.
+
+`@types/node` is required because `vite.config.ts` and the build test use `node:path`, `node:fs`, `process` and `__dirname`. Without it `tsc --noEmit` fails even though the build itself succeeds.
 
 - [ ] **Step 2: Write `package.json`**
 
@@ -141,7 +143,7 @@ This file must exist. Vitest prefers `vitest.config.ts` over `vite.config.ts`, a
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "types": ["chrome"],
+    "types": ["chrome", "node"],
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
@@ -238,10 +240,12 @@ Create `src/background/index.ts`:
 console.log('[karaoke] service worker started');
 ```
 
-- [ ] **Step 11: Build and run the tests**
+- [ ] **Step 11: Build, test, and typecheck**
 
-Run: `npm run build && npm test`
-Expected: build succeeds; all three tests PASS.
+Run: `npm run build && npm test && npm run typecheck`
+Expected: build succeeds; all three tests PASS; `tsc --noEmit` reports no errors.
+
+All three must pass. A green build with a failing `typecheck` is a failed step — the build tool does not typecheck, so `tsc` is the only thing checking the types this project relies on.
 
 - [ ] **Step 12: Verify it loads in Opera GX**
 
