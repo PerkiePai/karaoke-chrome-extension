@@ -1149,7 +1149,11 @@ const BRACKETED_NOISE =
 
 const CJK_BRACKETED_NOISE = /【[^】]*】/g;
 
-const FEATURED = /\s*[([]?\s*(?:feat\.?|ft\.?|featuring)\s+[^)\]]*[)\]]?/gi;
+// The \b is load-bearing: without it, `ft` matches inside words like
+// "Swift" or "Daft" (both \s* and [([]? can match zero-width), and the
+// trailing [^)\]]* then eats the rest of the title. "Taylor Swift – Blank
+// Space" normalizes to "Taylor Swi" without it.
+const FEATURED = /\s*[([]?\s*\b(?:feat\.?|ft\.?|featuring)\s+[^)\]]*[)\]]?/gi;
 
 const BARE_NOISE = [
   /\|\s*official[^|]*$/gi,
@@ -1487,7 +1491,7 @@ export function pickBestMatch(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run tests/core/match-scorer.test.ts`
-Expected: all fourteen tests PASS.
+Expected: all sixteen tests PASS.
 
 If the live-preference tests fail, check `sameVariant` before touching the weights — a variant mismatch must cost more than the title-similarity difference it causes.
 
