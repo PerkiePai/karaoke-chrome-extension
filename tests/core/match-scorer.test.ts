@@ -3,7 +3,9 @@ import {
   similarity,
   scoreCandidates,
   pickBestMatch,
+  pickBestScored,
   MATCH_THRESHOLD,
+  MIN_TRACK_SIMILARITY,
 } from '../../src/core/match-scorer';
 import type { LrclibRecord } from '../../src/core/types';
 
@@ -162,5 +164,72 @@ describe('pickBestMatch', () => {
   it('exposes a threshold between 0 and 1', () => {
     expect(MATCH_THRESHOLD).toBeGreaterThan(0);
     expect(MATCH_THRESHOLD).toBeLessThan(1);
+  });
+
+  it('rejects a same-artist track whose name does not resemble the wanted one', () => {
+    // Real case: คืนจันทร์ is absent from LRCLIB, but ครึ่งทาง by the same
+    // artist scored 0.561 against a 0.55 threshold and was shown as a match.
+    const wrong = record({
+      id: 100,
+      trackName: 'ครึ่งทาง',
+      artistName: 'Loso',
+      duration: null,
+    });
+    expect(
+      pickBestMatch({ artist: 'Loso', track: 'คืนจันทร์', durationSec: null }, [wrong]),
+    ).toBeNull();
+  });
+
+  it('still accepts a real match whose name carries a suffix', () => {
+    const remaster = record({
+      id: 101,
+      trackName: 'Wonderwall - Remastered',
+      artistName: 'Oasis',
+      duration: null,
+    });
+    expect(
+      pickBestMatch({ artist: 'Oasis', track: 'Wonderwall', durationSec: null }, [remaster])?.id,
+    ).toBe(101);
+  });
+
+  it('still accepts an exact Thai match found via the artist catalogue', () => {
+    const hit = record({ id: 102, trackName: 'ใจสั่งมา', artistName: 'Loso', duration: null });
+    expect(
+      pickBestMatch({ artist: 'Loso', track: 'ใจสั่งมา', durationSec: null }, [hit])?.id,
+    ).toBe(102);
+  });
+});
+
+describe('pickBestScored', () => {
+  it('exposes the track similarity that gated the decision', () => {
+    const hit = record({ id: 110, trackName: 'Wonderwall', artistName: 'Oasis', duration: 258 });
+    const scored = pickBestScored(
+      { artist: 'Oasis', track: 'Wonderwall', durationSec: 258 },
+      [hit],
+    );
+    expect(scored?.record.id).toBe(110);
+    expect(scored?.trackSimilarity).toBe(1);
+  });
+
+  it('returns null when the only candidate fails the similarity gate', () => {
+    const wrong = record({ id: 111, trackName: 'ครึ่งทาง', artistName: 'Loso', duration: null });
+    expect(
+      pickBestScored({ artist: 'Loso', track: 'คืนจันทร์', durationSec: null }, [wrong]),
+    ).toBeNull();
+  });
+
+  it('skips a high-scoring dissimilar candidate in favour of a similar one', () => {
+    const dissimilar = record({ id: 112, trackName: 'ครึ่งทาง', artistName: 'Loso', duration: 200 });
+    const similar = record({ id: 113, trackName: 'ใจสั่งมา', artistName: 'Loso', duration: null });
+    const scored = pickBestScored(
+      { artist: 'Loso', track: 'ใจสั่งมา', durationSec: 200 },
+      [dissimilar, similar],
+    );
+    expect(scored?.record.id).toBe(113);
+  });
+
+  it('exposes a similarity floor between 0 and 1', () => {
+    expect(MIN_TRACK_SIMILARITY).toBeGreaterThan(0);
+    expect(MIN_TRACK_SIMILARITY).toBeLessThan(1);
   });
 });

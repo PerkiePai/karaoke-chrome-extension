@@ -9,9 +9,19 @@ export interface MatchInput {
 export interface ScoredCandidate {
   record: LrclibRecord;
   score: number;
+  /** Track-name similarity alone, before weighting. Gates the match. */
+  trackSimilarity: number;
 }
 
 export const MATCH_THRESHOLD = 0.55;
+
+/**
+ * A candidate must clear this on track-name similarity alone, independently of
+ * its weighted total. Without it, a matching artist plus an unknown duration
+ * puts the floor at 0.45, so nearly any track name clears MATCH_THRESHOLD --
+ * measured: คืนจันทร์ matched ครึ่งทาง at 0.561.
+ */
+export const MIN_TRACK_SIMILARITY = 0.35;
 
 const WEIGHT_TRACK = 0.5;
 const WEIGHT_ARTIST = 0.3;
@@ -93,8 +103,10 @@ export function scoreCandidates(
 ): ScoredCandidate[] {
   return candidates
     .map((record) => {
+      const trackSimilarity = similarity(input.track, record.trackName);
+
       let score =
-        WEIGHT_TRACK * similarity(input.track, record.trackName) +
+        WEIGHT_TRACK * trackSimilarity +
         WEIGHT_ARTIST *
           (input.artist === null ? NEUTRAL : similarity(input.artist, record.artistName)) +
         WEIGHT_DURATION * durationScore(input.durationSec, record.duration);
@@ -102,7 +114,7 @@ export function scoreCandidates(
       if (!sameVariant(input.track, record.trackName)) score -= VARIANT_PENALTY;
       if (record.syncedLyrics) score += SYNCED_BONUS;
 
-      return { record, score };
+      return { record, score, trackSimilarity };
     })
     .sort((a, b) => b.score - a.score);
 }
@@ -118,11 +130,22 @@ export function hasUsableLyrics(record: LrclibRecord): boolean {
   return Boolean(record.syncedLyrics?.trim() || record.plainLyrics?.trim());
 }
 
+export function pickBestScored(
+  input: MatchInput,
+  candidates: LrclibRecord[],
+): ScoredCandidate | null {
+  for (const candidate of scoreCandidates(input, candidates)) {
+    // Sorted by score descending, so once one falls short none after it clears.
+    if (candidate.score < MATCH_THRESHOLD) return null;
+    if (candidate.trackSimilarity < MIN_TRACK_SIMILARITY) continue;
+    return candidate;
+  }
+  return null;
+}
+
 export function pickBestMatch(
   input: MatchInput,
   candidates: LrclibRecord[],
 ): LrclibRecord | null {
-  const best = scoreCandidates(input, candidates.filter(hasUsableLyrics))[0];
-  if (!best || best.score < MATCH_THRESHOLD) return null;
-  return best.record;
+  return pickBestScored(input, candidates.filter(hasUsableLyrics))?.record ?? null;
 }
