@@ -7,8 +7,8 @@
     "build:content": "cross-env TARGET=content vite build",
     "build:background": "cross-env TARGET=background vite build",
     "build": "npm run build:content && npm run build:background",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "cross-env NODE_OPTIONS=--experimental-require-module vitest run",
+    "test:watch": "cross-env NODE_OPTIONS=--experimental-require-module vitest",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
