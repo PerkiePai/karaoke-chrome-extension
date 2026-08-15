@@ -27,6 +27,10 @@ const NEUTRAL = 0.5;
 
 const VARIANT_WORDS = ['live', 'acoustic', 'cover', 'remix', 'instrumental'] as const;
 
+const VARIANT_PATTERNS = VARIANT_WORDS.map(
+  (word) => [word, new RegExp(`\\b${word}\\b`, 'i')] as const,
+);
+
 // NFC per the Thai rule in the design; no tone-mark folding.
 function normalize(text: string): string {
   return text
@@ -64,8 +68,9 @@ export function similarity(a: string, b: string): number {
 }
 
 function variantTags(text: string): Set<string> {
-  const lower = text.toLowerCase();
-  return new Set(VARIANT_WORDS.filter((word) => lower.includes(word)));
+  return new Set(
+    VARIANT_PATTERNS.filter(([, pattern]) => pattern.test(text)).map(([word]) => word),
+  );
 }
 
 function sameVariant(a: string, b: string): boolean {

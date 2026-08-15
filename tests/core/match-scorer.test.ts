@@ -100,6 +100,16 @@ describe('scoreCandidates', () => {
     expect(ranked[0]?.record.id).toBe(51);
   });
 
+  it('does not treat "Deliver" as a live marker, so the studio cut still wins', () => {
+    const studio = record({ id: 90, trackName: 'Deliver Me', artistName: 'Artist', duration: 180 });
+    const live = record({ id: 91, trackName: 'Deliver Me (Live)', artistName: 'Artist', duration: 300 });
+    const ranked = scoreCandidates(
+      { artist: 'Artist', track: 'Deliver Me', durationSec: 300 },
+      [live, studio],
+    );
+    expect(ranked[0]?.record.id).toBe(90);
+  });
+
   it('returns scores in descending order', () => {
     const ranked = scoreCandidates(
       { artist: 'Oasis', track: 'Wonderwall', durationSec: 258 },
