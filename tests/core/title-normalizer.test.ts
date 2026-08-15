@@ -158,6 +158,39 @@ describe('normalizeTitle', () => {
       track: 'Boom Boom',
     });
   });
+
+  // The collapse pattern used to consume the separating bracket along with the
+  // duplicate. That swallowed variant tags every other pattern in the module is
+  // scoped to preserve, so a live upload silently became the studio reading.
+  it('collapses a repeated name without eating a (Live) tag', () => {
+    expect(normalizeTitle('Coldplay - Yellow (Live) Yellow')).toEqual({
+      artist: 'Coldplay',
+      track: 'Yellow (Live)',
+    });
+  });
+
+  it('collapses a repeated name without eating a (Remix) tag', () => {
+    expect(normalizeTitle('Coldplay - Yellow (Remix) Yellow')).toEqual({
+      artist: 'Coldplay',
+      track: 'Yellow (Remix)',
+    });
+  });
+
+  it('collapses a repeated name without eating an (Acoustic) tag', () => {
+    expect(normalizeTitle('ใจสั่งมา - LOSO (Acoustic) LOSO')).toEqual({
+      artist: 'ใจสั่งมา',
+      track: 'LOSO (Acoustic)',
+    });
+  });
+
+  // Handing the bracket back must not resurrect promo tags: the strippers below
+  // the collapse still get their turn on it.
+  it('still drops a promo bracket that separated the duplicate copies', () => {
+    expect(normalizeTitle('Oasis - Wonderwall (Official Video) Wonderwall')).toEqual({
+      artist: 'Oasis',
+      track: 'Wonderwall',
+    });
+  });
 });
 
 describe('normalizeTitleCandidates', () => {

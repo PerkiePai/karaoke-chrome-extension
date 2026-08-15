@@ -4,15 +4,25 @@ export interface ParsedTitle {
 }
 
 /**
- * `X 【…】 X` / `X […] X` / `X (…) X` -> `X`.
+ * `X 【…】 X` / `X […] X` / `X (…) X` -> `X 【…】` / `X […]` / `X (…)`.
  *
  * YouTube uploaders often append the channel name after a bracketed tag, so the
  * artist ends up twice once the tag is stripped. Requiring a bracketed run
  * BETWEEN the two copies is what keeps this from eating "Bye Bye Bye".
  * Capped at four words, and applied before noise stripping removes the brackets.
+ *
+ * This drops only the DUPLICATE and hands the bracket back untouched (group 2),
+ * leaving it to the strippers below to decide the bracket's fate. Consuming the
+ * bracket here as well destroyed variant tags the match scorer needs: with a
+ * blanket `\([^)]*\)` the shape `Coldplay - Yellow (Live) Yellow` collapsed to
+ * the studio reading `Yellow`, silently losing the (Live) that every other
+ * pattern in this module is scoped to preserve. Handing the bracket back keeps
+ * each pattern responsible for one thing: `【OFFICIAL MV】` and `[Official MV]`
+ * still disappear via the noise strippers, while `(Live)` survives them and so
+ * survives this.
  */
 const DUPLICATED_ACROSS_BRACKETS =
-  /(\S+(?:\s+\S+){0,3})\s*(?:【[^】]*】|\[[^\]]*\]|\([^)]*\))\s*\1\s*$/i;
+  /(\S+(?:\s+\S+){0,3})(\s*(?:【[^】]*】|\[[^\]]*\]|\([^)]*\)))\s*\1\s*$/i;
 
 // Bracketed promo tags. Note the absence of live/acoustic/cover/remix:
 // the match scorer relies on those surviving.
@@ -47,7 +57,7 @@ export function normalizeTitle(rawTitle: string): ParsedTitle {
   let text = rawTitle.normalize('NFC');
 
   // Must run before the bracket strippers: the brackets are the evidence.
-  text = text.replace(DUPLICATED_ACROSS_BRACKETS, '$1');
+  text = text.replace(DUPLICATED_ACROSS_BRACKETS, '$1$2');
 
   text = text.replace(CJK_BRACKETED_NOISE, ' ');
   text = text.replace(BRACKETED_NOISE, ' ');
