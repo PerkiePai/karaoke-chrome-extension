@@ -1,8 +1,9 @@
 import { mountPanel, type PanelHandle } from './panel';
 import { detectSong, type DetectedSong } from './song-detector';
+import { decideReconcile } from './reconcile';
+import { planRender } from './render-plan';
 import { parseVideoId } from '../core/youtube-url';
 import { normalizeTitle } from '../core/title-normalizer';
-import { planRender } from './render-plan';
 import type { FetchLyricsRequest, FetchLyricsResponse } from '../messaging/types';
 
 const SECONDARY_SELECTOR = '#secondary';
@@ -13,12 +14,24 @@ const TITLE_TIMEOUT_MS = 10_000;
 
 let panel: PanelHandle | null = null;
 let currentVideoId: string | null = null;
+/** Raw title the displayed lyrics were fetched for; null while nothing is shown. */
+let renderedTitle: string | null = null;
+let isLoading = false;
+/**
+ * Bumped on every teardown and every load so in-flight async work can tell that
+ * it has been superseded. Replaces comparing against currentVideoId, which could
+ * not distinguish "same video, but we have started a fresh load".
+ */
+let generation = 0;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function teardown(): void {
   panel?.destroy();
   panel = null;
+  renderedTitle = null;
+  isLoading = false;
+  generation += 1;
 }
 
 async function waitForSecondary(): Promise<HTMLElement | null> {
@@ -58,69 +71,118 @@ async function waitForSong(videoId: string): Promise<DetectedSong | null> {
   return withoutDuration;
 }
 
+/** Mounts the panel for a newly-opened video, then loads its lyrics. */
 async function activate(videoId: string): Promise<void> {
+  const gen = generation;
   const container = await waitForSecondary();
-  if (!container || currentVideoId !== videoId) return;
+  if (!container || gen !== generation) return;
 
   panel = mountPanel(container);
   panel.setHeader('Karaoke Lyrics', 'identifying song…');
   panel.setStatus('Looking up lyrics…');
 
-  const song = await waitForSong(videoId);
-  if (currentVideoId !== videoId || !panel) return;
+  await load(videoId, gen);
+}
 
-  if (!song) {
-    panel.setStatus('Could not read the video title.');
-    return;
-  }
-
-  const { artist, track } = normalizeTitle(song.rawTitle);
-  panel.setHeader(track, artist ?? 'unknown artist');
-
-  const request: FetchLyricsRequest = {
-    type: 'FETCH_LYRICS',
-    videoId,
-    artist,
-    track,
-    durationSec: song.durationSec,
-  };
-
-  let response: FetchLyricsResponse;
+/** Fetches and renders lyrics. Safe to call again when the title changes. */
+async function load(videoId: string, gen: number): Promise<void> {
+  isLoading = true;
   try {
-    response = await chrome.runtime.sendMessage<FetchLyricsRequest, FetchLyricsResponse>(request);
-  } catch (error) {
-    console.error('[karaoke] message failed', error);
-    if (currentVideoId === videoId && panel) {
-      panel.setStatus('Extension worker unavailable. Reload the page.');
+    const song = await waitForSong(videoId);
+    if (gen !== generation || !panel) return;
+
+    if (!song) {
+      panel.setStatus('Could not read the video title.');
+      return;
     }
-    return;
+
+    // Recorded before any further await so that a later heading swap registers
+    // as a change and triggers a reload.
+    renderedTitle = song.rawTitle;
+
+    const { artist, track } = normalizeTitle(song.rawTitle);
+    panel.setHeader(track, artist ?? 'unknown artist');
+
+    const request: FetchLyricsRequest = {
+      type: 'FETCH_LYRICS',
+      videoId,
+      artist,
+      track,
+      durationSec: song.durationSec,
+    };
+
+    let response: FetchLyricsResponse;
+    try {
+      response = await chrome.runtime.sendMessage<FetchLyricsRequest, FetchLyricsResponse>(request);
+    } catch (error) {
+      console.error('[karaoke] message failed', error);
+      if (gen === generation && panel) {
+        panel.setStatus('Extension worker unavailable. Reload the page.');
+      }
+      return;
+    }
+
+    if (gen !== generation || !panel) return;
+
+    if (!response.ok) {
+      panel.setStatus(response.message);
+      panel.setLines([]);
+      return;
+    }
+
+    const { record } = response;
+    panel.setHeader(record.trackName, record.artistName);
+
+    const plan = planRender(record);
+    panel.setStatus(plan.status);
+    panel.setLines(plan.lines);
+  } finally {
+    if (gen === generation) isLoading = false;
   }
-
-  if (currentVideoId !== videoId || !panel) return;
-
-  if (!response.ok) {
-    panel.setStatus(response.message);
-    panel.setLines([]);
-    return;
-  }
-
-  const { record } = response;
-  panel.setHeader(record.trackName, record.artistName);
-
-  const plan = planRender(record);
-  panel.setStatus(plan.status);
-  panel.setLines(plan.lines);
 }
 
-function onLocationChanged(): void {
-  const videoId = parseVideoId(location.href);
-  if (videoId === currentVideoId) return;
-  currentVideoId = videoId;
-  teardown();
-  if (videoId) void activate(videoId);
+function reconcile(): void {
+  const urlVideoId = parseVideoId(location.href);
+  const detectedTitle = urlVideoId ? (detectSong(document, urlVideoId)?.rawTitle ?? null) : null;
+
+  const action = decideReconcile({
+    urlVideoId,
+    currentVideoId,
+    detectedTitle,
+    renderedTitle,
+    hasPanel: panel !== null,
+    isLoading,
+  });
+
+  switch (action.kind) {
+    case 'idle':
+      return;
+    case 'clear':
+      currentVideoId = null;
+      teardown();
+      return;
+    case 'activate':
+      currentVideoId = action.videoId;
+      teardown();
+      void activate(action.videoId).catch((error) => {
+        console.error('[karaoke] activate failed', error);
+      });
+      return;
+    case 'reload': {
+      // A fresh generation invalidates whatever the previous load was awaiting.
+      generation += 1;
+      const gen = generation;
+      void load(action.videoId, gen).catch((error) => {
+        console.error('[karaoke] reload failed', error);
+      });
+      return;
+    }
+  }
 }
 
-document.addEventListener('yt-navigate-finish', onLocationChanged);
-setInterval(onLocationChanged, NAVIGATION_POLL_MS);
+// Primary signal; YouTube fires this on its own SPA navigations.
+document.addEventListener('yt-navigate-finish', reconcile);
+// Backup signal, and the mechanism that self-corrects a stale title read.
+setInterval(reconcile, NAVIGATION_POLL_MS);
 
-onLocationChanged();
+reconcile();
