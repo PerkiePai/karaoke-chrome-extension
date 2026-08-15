@@ -1,0 +1,22 @@
+{
+  "name": "karaoke-chrome-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:content": "cross-env TARGET=content vite build",
+    "build:background": "cross-env TARGET=background vite build",
+    "build": "npm run build:content && npm run build:background",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.6",
+    "cross-env": "^10.1.0",
+    "jsdom": "^27.0.1",
+    "typescript": "^7.0.2",
+    "vite": "^6.4.3",
+    "vitest": "^4.1.10"
+  }
+}

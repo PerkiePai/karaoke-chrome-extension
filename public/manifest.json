@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Karaoke Lyrics",
+  "version": "0.1.0",
+  "description": "Time-synced lyrics beside YouTube music videos.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://lrclib.net/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
