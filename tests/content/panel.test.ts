@@ -58,6 +58,24 @@ describe('mountPanel', () => {
     expect(host.querySelector(`#${PANEL_HOST_ID}`)).toBeNull();
   });
 
+  // setStatus carries the display toggle the no-lyrics fallbacks depend on.
+  it('shows the status element and sets its text for a non-empty message', () => {
+    const panel = mountPanel(host);
+    panel.setStatus('Looking up lyrics…');
+    const el = shadowOf(host).querySelector<HTMLElement>('.kx-status')!;
+    expect(el.textContent).toBe('Looking up lyrics…');
+    expect(el.style.display).toBe('block');
+  });
+
+  it('hides the status element for an empty message', () => {
+    const panel = mountPanel(host);
+    panel.setStatus('Looking up lyrics…');
+    panel.setStatus('');
+    const el = shadowOf(host).querySelector<HTMLElement>('.kx-status')!;
+    expect(el.textContent).toBe('');
+    expect(el.style.display).toBe('none');
+  });
+
   it('sets header text', () => {
     const panel = mountPanel(host);
     panel.setHeader('คนไม่จำเป็น', 'Three Man Down');

@@ -2,7 +2,7 @@ import { mountPanel, type PanelHandle } from './panel';
 import { detectSong, type DetectedSong } from './song-detector';
 import { parseVideoId } from '../core/youtube-url';
 import { normalizeTitle } from '../core/title-normalizer';
-import { parseLrc } from '../core/lrc-parser';
+import { planRender } from './render-plan';
 import type { FetchLyricsRequest, FetchLyricsResponse } from '../messaging/types';
 
 const SECONDARY_SELECTOR = '#secondary';
@@ -32,17 +32,30 @@ async function waitForSecondary(): Promise<HTMLElement | null> {
 }
 
 /**
- * The heading and the video's duration both appear after navigation settles,
- * so poll until a title exists rather than reading once and giving up.
+ * The heading and the video's duration both appear after navigation settles, so
+ * poll rather than reading once and giving up.
+ *
+ * INVARIANT: the navigation poll may fire before the DOM updates — YouTube
+ * pushes the new URL while the heading and the reused <video> element still
+ * hold the PREVIOUS video's data. So detection must verify the page's own video
+ * id, and a title alone is not enough to stop polling: keep going until the
+ * duration is readable too, since a missing duration silently costs the scorer
+ * its main disambiguator. The timeout is the guard for both.
  */
-async function waitForSong(): Promise<DetectedSong | null> {
+async function waitForSong(videoId: string): Promise<DetectedSong | null> {
   const deadline = Date.now() + TITLE_TIMEOUT_MS;
+  let withoutDuration: DetectedSong | null = null;
+
   while (Date.now() < deadline) {
-    const song = detectSong();
-    if (song) return song;
+    const song = detectSong(document, videoId);
+    if (song) {
+      if (song.durationSec !== null) return song;
+      withoutDuration = song;
+    }
     await delay(SECONDARY_POLL_MS);
   }
-  return null;
+
+  return withoutDuration;
 }
 
 async function activate(videoId: string): Promise<void> {
@@ -53,7 +66,7 @@ async function activate(videoId: string): Promise<void> {
   panel.setHeader('Karaoke Lyrics', 'identifying song…');
   panel.setStatus('Looking up lyrics…');
 
-  const song = await waitForSong();
+  const song = await waitForSong(videoId);
   if (currentVideoId !== videoId || !panel) return;
 
   if (!song) {
@@ -94,16 +107,9 @@ async function activate(videoId: string): Promise<void> {
   const { record } = response;
   panel.setHeader(record.trackName, record.artistName);
 
-  if (record.syncedLyrics) {
-    panel.setStatus('');
-    panel.setLines(parseLrc(record.syncedLyrics).map((line) => line.text));
-  } else if (record.plainLyrics) {
-    panel.setStatus('No timings available for this track.');
-    panel.setLines(record.plainLyrics.split(/\r?\n/));
-  } else {
-    panel.setStatus('This track is marked instrumental.');
-    panel.setLines([]);
-  }
+  const plan = planRender(record);
+  panel.setStatus(plan.status);
+  panel.setLines(plan.lines);
 }
 
 function onLocationChanged(): void {
