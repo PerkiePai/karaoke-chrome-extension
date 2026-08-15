@@ -9,3 +9,13 @@ export interface LrclibRecord {
   plainLyrics: string | null;
   syncedLyrics: string | null;
 }
+
+/**
+ * One timed lyric line. `chords` is reserved for a future sprint and is
+ * always absent today — see the design doc's chord hook section.
+ */
+export interface LyricLine {
+  timeMs: number;
+  text: string;
+  chords?: { charIndex: number; symbol: string }[];
+}
