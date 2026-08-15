@@ -1439,9 +1439,20 @@ export function similarity(a: string, b: string): number {
   return 1 - levenshtein(x, y) / Math.max(x.length, y.length);
 }
 
+// Word-boundary matching is load-bearing. Plain substring matching tags
+// "Deliver", "Alive" and "Olive" as live, and "Discover" as a cover, which
+// makes sameVariant() return true against a genuinely live candidate and
+// silently suppresses VARIANT_PENALTY. Precompiled at module level, and
+// deliberately without the `g` flag — `g` carries lastIndex state across
+// .test() calls and would return alternating results.
+const VARIANT_PATTERNS = VARIANT_WORDS.map(
+  (word) => [word, new RegExp(`\\b${word}\\b`, 'i')] as const,
+);
+
 function variantTags(text: string): Set<string> {
-  const lower = text.toLowerCase();
-  return new Set(VARIANT_WORDS.filter((word) => lower.includes(word)));
+  return new Set(
+    VARIANT_PATTERNS.filter(([, pattern]) => pattern.test(text)).map(([word]) => word),
+  );
 }
 
 function sameVariant(a: string, b: string): boolean {
