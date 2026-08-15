@@ -19,10 +19,29 @@ export const PANEL_STYLES = `
   .kx-lines {
     list-style: none;
     margin: 0;
-    padding: 8px 0 0;
+    /* Generous top/bottom padding lets scrollIntoView({block:'center'})
+       actually center lines near the start or end of the list, not just
+       ones in the middle — the scroll container needs room to move past
+       its own content bounds. */
+    padding: 40% 0;
     overflow-y: auto;
+    scroll-behavior: smooth;
     font-size: 14px;
     line-height: 1.9;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
   }
-  .kx-line { color: #c8c8c8; padding: 1px 0; }
+  .kx-line {
+    color: #a7a7a7;
+    padding: 6px 0;
+    font-size: 15px;
+    font-weight: 600;
+    opacity: 0.55;
+    transition: color 0.25s ease, opacity 0.25s ease, font-size 0.25s ease;
+  }
+  .kx-line-active {
+    color: #ffffff;
+    opacity: 1;
+    font-size: 20px;
+  }
 `;

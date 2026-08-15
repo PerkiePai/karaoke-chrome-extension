@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mountPanel, PANEL_HOST_ID } from '../../src/content/panel';
+import type { LyricLine } from '../../src/core/types';
 
 function container(): HTMLElement {
   document.body.innerHTML = '<div id="secondary"></div>';
@@ -12,10 +13,17 @@ function shadowOf(host: HTMLElement): ShadowRoot {
   return (el as HTMLElement).shadowRoot!;
 }
 
+function lines(...texts: string[]): LyricLine[] {
+  return texts.map((text, i) => ({ timeMs: i * 1000, text }));
+}
+
 describe('mountPanel', () => {
   let host: HTMLElement;
   beforeEach(() => {
     host = container();
+    // jsdom does not implement scrollIntoView (real Chromium always does);
+    // setActiveLine's autoScroll path calls it directly, so tests supply it.
+    Element.prototype.scrollIntoView = vi.fn();
   });
 
   it('attaches a host element with an open shadow root', () => {
@@ -27,14 +35,14 @@ describe('mountPanel', () => {
 
   it('renders one list item per lyric line', () => {
     const panel = mountPanel(host);
-    panel.setLines(['line one', 'line two', 'line three']);
+    panel.setLines(lines('line one', 'line two', 'line three'));
     expect(shadowOf(host).querySelectorAll('.kx-line')).toHaveLength(3);
   });
 
   it('renders lyric text literally, never as markup', () => {
     // Lyrics come from a third-party API, so they are untrusted input.
     const panel = mountPanel(host);
-    panel.setLines(['<img src=x onerror=alert(1)>']);
+    panel.setLines(lines('<img src=x onerror=alert(1)>'));
     const line = shadowOf(host).querySelector('.kx-line')!;
     expect(line.querySelector('img')).toBeNull();
     expect(line.textContent).toBe('<img src=x onerror=alert(1)>');
@@ -42,7 +50,7 @@ describe('mountPanel', () => {
 
   it('preserves Thai text unchanged', () => {
     const panel = mountPanel(host);
-    panel.setLines(['ฉันคนไม่จำเป็น']);
+    panel.setLines(lines('ฉันคนไม่จำเป็น'));
     expect(shadowOf(host).querySelector('.kx-line')!.textContent).toBe('ฉันคนไม่จำเป็น');
   });
 
@@ -58,7 +66,6 @@ describe('mountPanel', () => {
     expect(host.querySelector(`#${PANEL_HOST_ID}`)).toBeNull();
   });
 
-  // setStatus carries the display toggle the no-lyrics fallbacks depend on.
   it('shows the status element and sets its text for a non-empty message', () => {
     const panel = mountPanel(host);
     panel.setStatus('Looking up lyrics…');
@@ -82,5 +89,83 @@ describe('mountPanel', () => {
     const shadow = shadowOf(host);
     expect(shadow.querySelector('.kx-title')!.textContent).toBe('คนไม่จำเป็น');
     expect(shadow.querySelector('.kx-subtitle')!.textContent).toBe('Three Man Down');
+  });
+
+  describe('setActiveLine', () => {
+    it('marks exactly the line at the given index as active', () => {
+      const panel = mountPanel(host);
+      panel.setLines(lines('a', 'b', 'c'));
+      panel.setActiveLine(1, false);
+      const items = shadowOf(host).querySelectorAll('.kx-line');
+      expect(items[0]!.classList.contains('kx-line-active')).toBe(false);
+      expect(items[1]!.classList.contains('kx-line-active')).toBe(true);
+      expect(items[2]!.classList.contains('kx-line-active')).toBe(false);
+    });
+
+    it('moves the active class when called again with a different index', () => {
+      const panel = mountPanel(host);
+      panel.setLines(lines('a', 'b', 'c'));
+      panel.setActiveLine(0, false);
+      panel.setActiveLine(2, false);
+      const items = shadowOf(host).querySelectorAll('.kx-line');
+      expect(items[0]!.classList.contains('kx-line-active')).toBe(false);
+      expect(items[2]!.classList.contains('kx-line-active')).toBe(true);
+    });
+
+    it('clears all highlighting when index is null', () => {
+      const panel = mountPanel(host);
+      panel.setLines(lines('a', 'b'));
+      panel.setActiveLine(0, false);
+      panel.setActiveLine(null, false);
+      const items = shadowOf(host).querySelectorAll('.kx-line');
+      expect(items[0]!.classList.contains('kx-line-active')).toBe(false);
+      expect(items[1]!.classList.contains('kx-line-active')).toBe(false);
+    });
+
+    it('scrolls the active line into view when autoScroll is true', () => {
+      const panel = mountPanel(host);
+      panel.setLines(lines('a', 'b'));
+      panel.setActiveLine(1, true);
+      const items = shadowOf(host).querySelectorAll('.kx-line');
+      expect(items[1]!.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+    });
+
+    it('does not scroll when autoScroll is false', () => {
+      const panel = mountPanel(host);
+      panel.setLines(lines('a', 'b'));
+      panel.setActiveLine(1, false);
+      const items = shadowOf(host).querySelectorAll('.kx-line');
+      expect(items[1]!.scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onManualScroll', () => {
+    it('fires the registered callback on a wheel event over the lyric list', () => {
+      const panel = mountPanel(host);
+      panel.setLines(lines('a', 'b'));
+      const callback = vi.fn();
+      panel.onManualScroll(callback);
+      shadowOf(host).querySelector('.kx-lines')!.dispatchEvent(new Event('wheel'));
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires the registered callback on a touchmove event over the lyric list', () => {
+      const panel = mountPanel(host);
+      const callback = vi.fn();
+      panel.onManualScroll(callback);
+      shadowOf(host).querySelector('.kx-lines')!.dispatchEvent(new Event('touchmove'));
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it('replaces rather than stacks the callback on repeated registration', () => {
+      const panel = mountPanel(host);
+      const first = vi.fn();
+      const second = vi.fn();
+      panel.onManualScroll(first);
+      panel.onManualScroll(second);
+      shadowOf(host).querySelector('.kx-lines')!.dispatchEvent(new Event('wheel'));
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { planRender } from '../../src/content/render-plan';
-import type { LrclibRecord } from '../../src/core/types';
+import type { LrclibRecord, LyricLine } from '../../src/core/types';
 
 function record(over: Partial<LrclibRecord>): LrclibRecord {
   return {
@@ -22,7 +22,10 @@ describe('planRender', () => {
       record({ syncedLyrics: '[00:01.00]first\n[00:02.00]second', plainLyrics: 'first\nsecond' }),
     );
     expect(plan.status).toBe('');
-    expect(plan.lines).toEqual(['first', 'second']);
+    expect(plan.lines).toEqual([
+      { timeMs: 1000, text: 'first' },
+      { timeMs: 2000, text: 'second' },
+    ] as LyricLine[]);
   });
 
   // A non-empty LRC body that parses to nothing used to render a hidden status
@@ -35,7 +38,10 @@ describe('planRender', () => {
       }),
     );
     expect(plan.status).toBe('No timings available for this track.');
-    expect(plan.lines).toEqual(['first', 'second']);
+    expect(plan.lines).toEqual([
+      { timeMs: 0, text: 'first' },
+      { timeMs: 1000, text: 'second' },
+    ] as LyricLine[]);
   });
 
   it('reports no lyrics when synced lyrics parse to nothing and there is no plain text', () => {
@@ -47,7 +53,10 @@ describe('planRender', () => {
   it('renders plain lyrics when there are no synced ones', () => {
     const plan = planRender(record({ plainLyrics: 'one\r\ntwo' }));
     expect(plan.status).toBe('No timings available for this track.');
-    expect(plan.lines).toEqual(['one', 'two']);
+    expect(plan.lines).toEqual([
+      { timeMs: 0, text: 'one' },
+      { timeMs: 1000, text: 'two' },
+    ] as LyricLine[]);
   });
 
   it('says instrumental only when the record is marked instrumental', () => {

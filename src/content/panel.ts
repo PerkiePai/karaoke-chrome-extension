@@ -1,11 +1,19 @@
 import { PANEL_STYLES } from './panel-styles';
+import type { LyricLine } from '../core/types';
 
 export const PANEL_HOST_ID = 'karaoke-lyrics-panel-host';
 
 export interface PanelHandle {
   setHeader(title: string, subtitle: string): void;
   setStatus(message: string): void;
-  setLines(lines: string[]): void;
+  setLines(lines: LyricLine[]): void;
+  /** Highlights the line at `index` (null clears highlighting). Scrolls it
+   * into view, centered, only when `autoScroll` is true. */
+  setActiveLine(index: number | null, autoScroll: boolean): void;
+  /** Replaces the callback fired when the user scrolls the lyric list by
+   * hand (wheel or touch) — not additive, since only one sync loop is ever
+   * active for a panel at a time. */
+  onManualScroll(callback: () => void): void;
   destroy(): void;
 }
 
@@ -42,6 +50,14 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     return el;
   };
 
+  const linesEl = find<HTMLElement>('.kx-lines');
+
+  // A single replaceable slot, not an event-target list: only one sync loop
+  // drives a panel at a time, so there is nothing to leak across restarts.
+  let manualScrollListener: (() => void) | null = null;
+  linesEl.addEventListener('wheel', () => manualScrollListener?.(), { passive: true });
+  linesEl.addEventListener('touchmove', () => manualScrollListener?.(), { passive: true });
+
   return {
     setHeader(title, subtitle) {
       find('.kx-title').textContent = title;
@@ -55,13 +71,26 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     setLines(lines) {
       // textContent per line: lyrics are untrusted third-party content.
       find('.kx-lines').replaceChildren(
-        ...lines.map((text) => {
+        ...lines.map((line) => {
           const li = document.createElement('li');
           li.className = 'kx-line';
-          li.textContent = text;
+          li.textContent = line.text;
           return li;
         }),
       );
+    },
+    setActiveLine(index, autoScroll) {
+      const items = find<HTMLElement>('.kx-lines').children;
+      for (let i = 0; i < items.length; i++) {
+        items[i]!.classList.toggle('kx-line-active', i === index);
+      }
+      if (index !== null && autoScroll) {
+        const active = items[index] as HTMLElement | undefined;
+        active?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    },
+    onManualScroll(callback) {
+      manualScrollListener = callback;
     },
     destroy() {
       host.remove();

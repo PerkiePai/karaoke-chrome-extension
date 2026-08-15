@@ -1,10 +1,10 @@
 import { parseLrc } from '../core/lrc-parser';
-import type { LrclibRecord } from '../core/types';
+import type { LrclibRecord, LyricLine } from '../core/types';
 
 export interface RenderPlan {
   /** Empty string means "hide the status element" — see PanelHandle.setStatus. */
   status: string;
-  lines: string[];
+  lines: LyricLine[];
 }
 
 /**
@@ -19,13 +19,13 @@ export interface RenderPlan {
 export function planRender(record: LrclibRecord): RenderPlan {
   const synced = parseLrc(record.syncedLyrics ?? '');
   if (synced.length > 0) {
-    return { status: '', lines: synced.map((line) => line.text) };
+    return { status: '', lines: synced };
   }
 
   if (record.plainLyrics?.trim()) {
     return {
       status: 'No timings available for this track.',
-      lines: record.plainLyrics.split(/\r?\n/),
+      lines: record.plainLyrics.split(/\r?\n/).map((text, i) => ({ timeMs: i * 1000, text })),
     };
   }
 
