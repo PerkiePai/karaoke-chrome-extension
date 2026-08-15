@@ -11,6 +11,11 @@ export interface ScoredCandidate {
   score: number;
   /** Track-name similarity alone, before weighting. Gates the match. */
   trackSimilarity: number;
+  /**
+   * Artist-name similarity alone, before weighting, or null when the reading
+   * carries no artist (nothing to compare, so nothing to gate on).
+   */
+  artistSimilarity: number | null;
 }
 
 export const MATCH_THRESHOLD = 0.55;
@@ -22,6 +27,26 @@ export const MATCH_THRESHOLD = 0.55;
  * measured: คืนจันทร์ matched ครึ่งทาง at 0.561.
  */
 export const MIN_TRACK_SIMILARITY = 0.35;
+
+/**
+ * The artist axis needs its own floor for the same reason the track axis does,
+ * and its absence is what let the two gates be walked around together.
+ *
+ * A title like `คืนจันทร์ - LOSO 【OFFICIAL MV】LOSO` normalises to the reading
+ * artist=`คืนจันทร์`, track=`LOSO`. Against any SELF-TITLED record -- artistName
+ * equal to trackName, e.g. `Loso` by `Sek Loso`, `Bodyslam` by `Bodyslam` --
+ * that reading scores trackSimilarity 1.000 and sails through
+ * MIN_TRACK_SIMILARITY, while the artist term contributes essentially nothing.
+ * WEIGHT_TRACK * 1.0 plus the duration term alone reaches 0.60-0.70, over
+ * MATCH_THRESHOLD, so a song LRCLIB does not have was shown as one it does.
+ * Measured live on คืนจันทร์/Loso and, in BOTH orderings, ความเชื่อ/BODYSLAM.
+ *
+ * Gating on the artist axis too means a candidate has to resemble the wanted
+ * song on BOTH names, not just whichever one happens to line up. Skipped when
+ * the reading's artist is null: that means "no ordering information", which
+ * must stay usable rather than becoming an automatic rejection.
+ */
+export const MIN_ARTIST_SIMILARITY = 0.3;
 
 const WEIGHT_TRACK = 0.5;
 const WEIGHT_ARTIST = 0.3;
@@ -35,7 +60,12 @@ const DURATION_TOLERANCE_SEC = 20;
 /** Score used when a signal is unavailable — neither rewards nor punishes. */
 const NEUTRAL = 0.5;
 
-const VARIANT_WORDS = ['live', 'acoustic', 'cover', 'remix', 'instrumental'] as const;
+/**
+ * Exported so other modules reuse this one list rather than growing a second
+ * copy that drifts out of step with it — see `buildSearchQuery`, which must not
+ * treat these as identifying search terms.
+ */
+export const VARIANT_WORDS = ['live', 'acoustic', 'cover', 'remix', 'instrumental'] as const;
 
 const VARIANT_PATTERNS = VARIANT_WORDS.map(
   (word) => [word, new RegExp(`\\b${word}\\b`, 'i')] as const,
@@ -104,17 +134,18 @@ export function scoreCandidates(
   return candidates
     .map((record) => {
       const trackSimilarity = similarity(input.track, record.trackName);
+      const artistSimilarity =
+        input.artist === null ? null : similarity(input.artist, record.artistName);
 
       let score =
         WEIGHT_TRACK * trackSimilarity +
-        WEIGHT_ARTIST *
-          (input.artist === null ? NEUTRAL : similarity(input.artist, record.artistName)) +
+        WEIGHT_ARTIST * (artistSimilarity ?? NEUTRAL) +
         WEIGHT_DURATION * durationScore(input.durationSec, record.duration);
 
       if (!sameVariant(input.track, record.trackName)) score -= VARIANT_PENALTY;
       if (record.syncedLyrics) score += SYNCED_BONUS;
 
-      return { record, score, trackSimilarity };
+      return { record, score, trackSimilarity, artistSimilarity };
     })
     .sort((a, b) => b.score - a.score);
 }
@@ -138,6 +169,12 @@ export function pickBestScored(
     // Sorted by score descending, so once one falls short none after it clears.
     if (candidate.score < MATCH_THRESHOLD) return null;
     if (candidate.trackSimilarity < MIN_TRACK_SIMILARITY) continue;
+    // Both axes gate independently. One strong axis must not carry a candidate
+    // over the line on its own — that is how a self-titled record matched a
+    // reading whose track name was really the artist's name.
+    if (candidate.artistSimilarity !== null && candidate.artistSimilarity < MIN_ARTIST_SIMILARITY) {
+      continue;
+    }
     return candidate;
   }
   return null;

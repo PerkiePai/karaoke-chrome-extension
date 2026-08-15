@@ -6,6 +6,7 @@ import {
   pickBestScored,
   MATCH_THRESHOLD,
   MIN_TRACK_SIMILARITY,
+  MIN_ARTIST_SIMILARITY,
 } from '../../src/core/match-scorer';
 import type { LrclibRecord } from '../../src/core/types';
 
@@ -231,5 +232,69 @@ describe('pickBestScored', () => {
   it('exposes a similarity floor between 0 and 1', () => {
     expect(MIN_TRACK_SIMILARITY).toBeGreaterThan(0);
     expect(MIN_TRACK_SIMILARITY).toBeLessThan(1);
+  });
+
+  it('exposes an artist similarity floor between 0 and 1', () => {
+    expect(MIN_ARTIST_SIMILARITY).toBeGreaterThan(0);
+    expect(MIN_ARTIST_SIMILARITY).toBeLessThan(1);
+  });
+
+  // `คืนจันทร์ - LOSO 【OFFICIAL MV】LOSO` normalises to artist=คืนจันทร์,
+  // track=LOSO. Against the self-titled record "Loso" by "Sek Loso" that is
+  // trackSimilarity 1.000 -- straight through the track gate -- while the
+  // artist term contributes nothing. Track weight plus duration alone cleared
+  // MATCH_THRESHOLD, so a song LRCLIB does not have was shown as one it does.
+  it('rejects a self-titled record when the artist axis does not match at all', () => {
+    const selfTitled = record({
+      id: 120,
+      trackName: 'Loso',
+      artistName: 'Sek Loso',
+      duration: null,
+    });
+    expect(
+      pickBestScored({ artist: 'คืนจันทร์', track: 'LOSO', durationSec: null }, [selfTitled]),
+    ).toBeNull();
+  });
+
+  it('rejects it even when the duration lines up exactly', () => {
+    const selfTitled = record({
+      id: 121,
+      trackName: 'Bodyslam',
+      artistName: 'Bodyslam',
+      duration: 260,
+    });
+    expect(
+      pickBestScored({ artist: 'ความเชื่อ', track: 'BODYSLAM', durationSec: 260 }, [selfTitled]),
+    ).toBeNull();
+  });
+
+  it('reports the artist similarity that gated the decision', () => {
+    const hit = record({ id: 122, trackName: 'Wonderwall', artistName: 'Oasis', duration: 258 });
+    const scored = pickBestScored({ artist: 'Oasis', track: 'Wonderwall', durationSec: 258 }, [hit]);
+    expect(scored?.artistSimilarity).toBe(1);
+  });
+
+  // The gate must stay off when the title gave no ordering information at all,
+  // or every separator-less upload becomes an automatic rejection.
+  it('does not gate on the artist axis when the reading has no artist', () => {
+    const hit = record({ id: 123, trackName: 'Wonderwall', artistName: 'Oasis', duration: 258 });
+    const scored = pickBestScored({ artist: null, track: 'Wonderwall', durationSec: 258 }, [hit]);
+    expect(scored?.record.id).toBe(123);
+    expect(scored?.artistSimilarity).toBeNull();
+  });
+
+  // The swapped reading of the same title is the one that must still work.
+  it('still accepts the reading whose artist really is the artist', () => {
+    const hit = record({ id: 124, trackName: 'ใจสั่งมา', artistName: 'Loso', duration: null });
+    const scored = pickBestScored({ artist: 'Loso', track: 'ใจสั่งมา', durationSec: null }, [hit]);
+    expect(scored?.record.id).toBe(124);
+  });
+
+  // A near-miss on the artist name must not be collateral damage: the floor is
+  // low enough that "Sek Loso" vs "Loso" still clears it.
+  it('accepts a match whose artist name is only a partial spelling', () => {
+    const hit = record({ id: 125, trackName: 'ใจสั่งมา', artistName: 'Sek Loso', duration: null });
+    const scored = pickBestScored({ artist: 'Loso', track: 'ใจสั่งมา', durationSec: null }, [hit]);
+    expect(scored?.record.id).toBe(125);
   });
 });
