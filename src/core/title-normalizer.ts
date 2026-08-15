@@ -16,7 +16,7 @@ const BARE_NOISE = [
   /\|\s*official[^|]*$/gi,
   /\bofficial\s+(?:music\s+)?video\b/gi,
   /\bofficial\s+(?:audio|mv)\b/gi,
-  /\b(?:hd|4k|1080p|720p)\b/gi,
+  /(?:\s+\b(?:hd|4k|1080p|720p)\b)+\s*$/gi,
 ];
 
 const SEPARATORS = [' - ', ' – ', ' — ', ' | '];

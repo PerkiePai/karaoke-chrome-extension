@@ -65,4 +65,18 @@ describe('normalizeTitle', () => {
   it('returns an empty track for empty input', () => {
     expect(normalizeTitle('')).toEqual({ artist: null, track: '' });
   });
+
+  it('keeps a leading HD that is part of the artist name', () => {
+    expect(normalizeTitle('HD Radio - Something')).toEqual({
+      artist: 'HD Radio',
+      track: 'Something',
+    });
+  });
+
+  it('strips stacked trailing resolution tags', () => {
+    expect(normalizeTitle('Oasis - Wonderwall 1080p HD')).toEqual({
+      artist: 'Oasis',
+      track: 'Wonderwall',
+    });
+  });
 });
