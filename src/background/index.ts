@@ -1,4 +1,6 @@
 import { searchLyrics } from '../lrclib/client';
+import { handleFetchLyrics } from './handle-fetch-lyrics';
+import type { FetchLyricsRequest } from '../messaging/types';
 
 console.log('[karaoke] service worker started');
 
@@ -6,11 +8,17 @@ chrome.runtime.onInstalled.addListener(() => {
   void runSmokeTest();
 });
 
-/**
- * Proves at install time that this browser can reach LRCLIB from a service
- * worker. Exists so platform problems surface immediately rather than being
- * mistaken for bugs in song matching later.
- */
+chrome.runtime.onMessage.addListener((message: FetchLyricsRequest, _sender, sendResponse) => {
+  if (message?.type !== 'FETCH_LYRICS') return false;
+
+  void handleFetchLyrics(message, (query) => searchLyrics(query)).then(sendResponse);
+
+  // Returning true keeps the message channel open for the async sendResponse
+  // above. Without it Chromium closes the channel and the caller gets
+  // undefined. This is the single most common MV3 messaging bug.
+  return true;
+});
+
 async function runSmokeTest(): Promise<void> {
   try {
     const results = await searchLyrics('oasis wonderwall');
@@ -18,7 +26,6 @@ async function runSmokeTest(): Promise<void> {
     console.log(
       `[karaoke] SMOKE OK — ${results.length} results, ${syncedCount} with synced lyrics`,
     );
-    console.log('[karaoke] first result:', results[0]);
   } catch (error) {
     console.error('[karaoke] SMOKE FAILED —', error);
   }
