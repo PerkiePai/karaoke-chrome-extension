@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTitle } from '../../src/core/title-normalizer';
+import { normalizeTitle, normalizeTitleCandidates } from '../../src/core/title-normalizer';
 
 describe('normalizeTitle', () => {
   it('splits artist and track on a hyphen and drops [Official MV]', () => {
@@ -157,5 +157,32 @@ describe('normalizeTitle', () => {
       artist: 'John Lee Hooker',
       track: 'Boom Boom',
     });
+  });
+});
+
+describe('normalizeTitleCandidates', () => {
+  it('offers both orderings when a separator was found', () => {
+    expect(normalizeTitleCandidates('คืนจันทร์ - LOSO 【OFFICIAL MV】LOSO')).toEqual([
+      { artist: 'คืนจันทร์', track: 'LOSO' },
+      { artist: 'LOSO', track: 'คืนจันทร์' },
+    ]);
+  });
+
+  it('offers both orderings for a Western title too', () => {
+    expect(normalizeTitleCandidates('Oasis - Wonderwall (Official Video)')).toEqual([
+      { artist: 'Oasis', track: 'Wonderwall' },
+      { artist: 'Wonderwall', track: 'Oasis' },
+    ]);
+  });
+
+  it('offers a single reading when there is no separator', () => {
+    expect(normalizeTitleCandidates('เพลงไม่มีศิลปิน')).toEqual([
+      { artist: null, track: 'เพลงไม่มีศิลปิน' },
+    ]);
+  });
+
+  it('always leads with the same reading normalizeTitle returns', () => {
+    const raw = 'Three Man Down - คนไม่จำเป็น | Official MV';
+    expect(normalizeTitleCandidates(raw)[0]).toEqual(normalizeTitle(raw));
   });
 });

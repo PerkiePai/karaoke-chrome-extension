@@ -76,3 +76,17 @@ export function normalizeTitle(rawTitle: string): ParsedTitle {
 
   return { artist: null, track: text };
 }
+
+/**
+ * Every plausible reading of a title, best guess first.
+ *
+ * Thai uploads commonly run `Song - Artist`, the reverse of the Western
+ * `Artist - Song`. Which one is right is not decidable from the title alone, so
+ * both are offered and the match scorer picks — only one of them will resemble
+ * a real record.
+ */
+export function normalizeTitleCandidates(rawTitle: string): ParsedTitle[] {
+  const primary = normalizeTitle(rawTitle);
+  if (primary.artist === null) return [primary];
+  return [primary, { artist: primary.track, track: primary.artist }];
+}
