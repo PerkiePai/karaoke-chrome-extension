@@ -10,10 +10,18 @@ const BRACKETED_NOISE =
 
 const CJK_BRACKETED_NOISE = /【[^】]*】/g;
 
-const FEATURED = /\s*[([]?\s*\b(?:feat\.?|ft\.?|featuring)\s+[^)\]]*[)\]]?/gi;
+// Featured-artist credits come in two shapes and must be handled separately.
+// A bracketed credit may safely run to its closing bracket. A BARE credit has no
+// closing bracket, so it must stop at the artist/track separator or end of
+// string — a greedy `[^)\]]*` there swallows the separator and the track with it.
+// The `\b` is load-bearing: without it `ft` matches inside "Swift".
+const FEATURED_BRACKETED = /\s*[([]\s*\b(?:featuring|feat\.?|ft\.?)\s+[^)\]]*[)\]]/gi;
+const FEATURED_BARE = /\s*\b(?:featuring|feat\.?|ft\.?)\s+.*?(?=\s+[-–—|]\s|$)/gi;
 
 const BARE_NOISE = [
-  /\|\s*official[^|]*$/gi,
+  // Trailing pipe suffixes, restricted to known promo words: a pipe can also
+  // appear legitimately in a title, so this must never strip every suffix.
+  /\|\s*(?:official|lyrics?|audio|m\/?v|visualizer|teaser)\b[^|]*$/gi,
   /\bofficial\s+(?:music\s+)?video\b/gi,
   /\bofficial\s+(?:audio|mv)\b/gi,
   /(?:\s+\b(?:hd|4k|1080p|720p)\b)+\s*$/gi,
@@ -29,15 +37,24 @@ export function normalizeTitle(rawTitle: string): ParsedTitle {
 
   text = text.replace(CJK_BRACKETED_NOISE, ' ');
   text = text.replace(BRACKETED_NOISE, ' ');
-  text = text.replace(FEATURED, ' ');
+  text = text.replace(FEATURED_BRACKETED, ' ');
+  text = text.replace(FEATURED_BARE, ' ');
   for (const pattern of BARE_NOISE) text = text.replace(pattern, ' ');
 
   text = text.replace(/\s+/g, ' ').trim().replace(EDGE_JUNK, '').trim();
 
-  for (const separator of SEPARATORS) {
-    const index = text.indexOf(separator);
+  // The separator is chosen by POSITION, not by the order of SEPARATORS: the
+  // artist is whatever precedes the first separator in the string, so a later
+  // hyphen must never beat an earlier em dash.
+  const candidates = SEPARATORS.map((separator) => ({
+    separator,
     // index > 0 so a leading separator never yields an empty artist.
-    if (index <= 0) continue;
+    index: text.indexOf(separator),
+  }))
+    .filter(({ index }) => index > 0)
+    .sort((a, b) => a.index - b.index);
+
+  for (const { separator, index } of candidates) {
     const artist = text.slice(0, index).trim();
     const track = text.slice(index + separator.length).trim();
     if (artist && track) return { artist, track };

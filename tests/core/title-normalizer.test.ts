@@ -79,4 +79,55 @@ describe('normalizeTitle', () => {
       track: 'Wonderwall',
     });
   });
+
+  // A bare (unbracketed) featured credit has no closing bracket to stop it, so a
+  // greedy pattern ran to end of string and ate the separator and the track.
+  it('keeps the track when a bare ft. credit precedes the separator', () => {
+    expect(normalizeTitle('Palmy ft. Boy Peacemaker - เพื่อนสนิท')).toEqual({
+      artist: 'Palmy',
+      track: 'เพื่อนสนิท',
+    });
+  });
+
+  it('keeps the track when a bare ft. credit precedes an ASCII separator', () => {
+    expect(normalizeTitle('Bruno Mars ft. Cardi B - Finesse')).toEqual({
+      artist: 'Bruno Mars',
+      track: 'Finesse',
+    });
+  });
+
+  it('handles a bare feat. credit alongside a bracketed promo tag', () => {
+    expect(normalizeTitle('YOUNGOHM feat. Bookoo - Bangkok Legacy [Official MV]')).toEqual({
+      artist: 'YOUNGOHM',
+      track: 'Bangkok Legacy',
+    });
+  });
+
+  it('drops a bare featured credit that runs to the end of the title', () => {
+    expect(normalizeTitle('Oasis - Wonderwall featuring Someone')).toEqual({
+      artist: 'Oasis',
+      track: 'Wonderwall',
+    });
+  });
+
+  it('drops a pipe-delimited lyrics-video suffix, not just an official one', () => {
+    expect(normalizeTitle('THE TOYS - ทุกๆ ครั้ง | Lyrics Video')).toEqual({
+      artist: 'THE TOYS',
+      track: 'ทุกๆ ครั้ง',
+    });
+  });
+
+  it('keeps a pipe suffix that is not a promo word', () => {
+    expect(normalizeTitle('Artist - Song | Live at Wembley')).toEqual({
+      artist: 'Artist',
+      track: 'Song | Live at Wembley',
+    });
+  });
+
+  it('splits on the earliest separator, not the first one in the list', () => {
+    expect(normalizeTitle('Cocktail — เรา - Live')).toEqual({
+      artist: 'Cocktail',
+      track: 'เรา - Live',
+    });
+  });
 });
