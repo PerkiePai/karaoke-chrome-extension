@@ -3,6 +3,10 @@ import { parseVideoId } from '../core/youtube-url';
 export interface DetectedSong {
   rawTitle: string;
   durationSec: number | null;
+  /** Channel name for the video, or null if unreadable. Used only as a
+   *  fallback artist when title-parsing finds no separator — see
+   *  content/index.ts's load(). */
+  channelName: string | null;
 }
 
 // Ordered most specific first. YouTube changes its markup often, so each
@@ -11,6 +15,17 @@ const TITLE_SELECTORS = [
   'h1.ytd-watch-metadata yt-formatted-string',
   'h1.title yt-formatted-string',
   'meta[name="title"]',
+] as const;
+
+// Ordered most specific first, mirroring TITLE_SELECTORS. UNVERIFIED against
+// live YouTube markup — confirm in the browser (Sprint 5 acceptance check)
+// before trusting this in production. Low risk either way: the fallback only
+// kicks in when title parsing already found no artist, so a wrong or missing
+// channel name just degrades to today's behavior (search on track name alone).
+const CHANNEL_NAME_SELECTORS = [
+  'ytd-channel-name#channel-name yt-formatted-string#text',
+  '#owner ytd-channel-name yt-formatted-string',
+  'ytd-video-owner-renderer ytd-channel-name a',
 ] as const;
 
 const WATCH_FLEXY_SELECTOR = 'ytd-watch-flexy[video-id]';
@@ -45,7 +60,7 @@ export function detectSong(
       ? duration
       : null;
 
-  return { rawTitle, durationSec };
+  return { rawTitle, durationSec, channelName: readChannelName(doc) };
 }
 
 /**
@@ -77,6 +92,15 @@ function readTitle(doc: Document): string | null {
     const el = doc.querySelector(selector);
     if (!el) continue;
     const text = el instanceof HTMLMetaElement ? el.content : el.textContent;
+    if (text && text.trim()) return text.trim();
+  }
+  return null;
+}
+
+function readChannelName(doc: Document): string | null {
+  for (const selector of CHANNEL_NAME_SELECTORS) {
+    const el = doc.querySelector(selector);
+    const text = el?.textContent;
     if (text && text.trim()) return text.trim();
   }
   return null;

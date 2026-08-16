@@ -107,3 +107,26 @@ describe('detectSong video id check', () => {
     expect(detectSong(doc)?.rawTitle).toBe('Old - Song');
   });
 });
+
+describe('detectSong channel name', () => {
+  it('reads the channel name when present', () => {
+    const doc = pageWith(
+      '<h1 class="ytd-watch-metadata"><yt-formatted-string>A - B</yt-formatted-string></h1>' +
+      '<ytd-channel-name id="channel-name"><yt-formatted-string id="text">Tattoo Colour</yt-formatted-string></ytd-channel-name>',
+    );
+    expect(detectSong(doc)?.channelName).toBe('Tattoo Colour');
+  });
+
+  it('returns null channelName when no channel element is present', () => {
+    const doc = pageWith('<h1 class="ytd-watch-metadata"><yt-formatted-string>A - B</yt-formatted-string></h1>');
+    expect(detectSong(doc)?.channelName).toBeNull();
+  });
+
+  it('falls back through the channel-name selector list', () => {
+    const doc = pageWith(
+      '<h1 class="ytd-watch-metadata"><yt-formatted-string>A - B</yt-formatted-string></h1>' +
+      '<div id="owner"><ytd-channel-name><yt-formatted-string>LOSO Official</yt-formatted-string></ytd-channel-name></div>',
+    );
+    expect(detectSong(doc)?.channelName).toBe('LOSO Official');
+  });
+});

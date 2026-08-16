@@ -340,6 +340,10 @@ async function load(videoId: string, gen: number): Promise<void> {
     currentDurationSec = song.durationSec;
 
     const readings = normalizeTitleCandidates(song.rawTitle);
+    if (readings[0]!.artist === null && song.channelName) {
+      console.log(`[karaoke] using channel-name fallback artist: "${song.channelName}"`);
+      readings.push({ artist: song.channelName, track: readings[0]!.track });
+    }
     const primary = readings[0]!;
     panel.setHeader(primary.track, primary.artist ?? 'unknown artist');
 
