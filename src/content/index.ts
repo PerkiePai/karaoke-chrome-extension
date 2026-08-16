@@ -3,8 +3,10 @@ import { detectSong, type DetectedSong } from './song-detector';
 import { decideReconcile } from './reconcile';
 import { planRender } from './render-plan';
 import { startSyncLoop, type SyncLoopHandle } from './sync-loop';
+import { startAutoScrollLoop, type AutoScrollLoopHandle } from './auto-scroll-loop';
 import { parseVideoId } from '../core/youtube-url';
 import { normalizeTitleCandidates } from '../core/title-normalizer';
+import type { LyricLine } from '../core/types';
 import type {
   FetchLyricsRequest,
   FetchLyricsResponse,
@@ -25,6 +27,10 @@ const SECONDARY_POLL_MS = 200;
 const SECONDARY_TIMEOUT_MS = 10_000;
 const NAVIGATION_POLL_MS = 1000;
 const TITLE_TIMEOUT_MS = 10_000;
+const OFFSET_MIN_SEC = -30;
+const OFFSET_MAX_SEC = 30;
+const SPEED_MIN = 0.3;
+const SPEED_MAX = 3.0;
 
 let panel: PanelHandle | null = null;
 let currentVideoId: string | null = null;
@@ -44,15 +50,26 @@ let currentLrclibId: number | null = null;
 let currentRecord: import('../core/types').LrclibRecord | null = null;
 /** Offset applied to the sync engine for the current video, in seconds. */
 let currentOffsetSec = 0;
-/** The running sync loop handle, so the nudge callback can update its offset. */
+/** Lines of the currently displayed SYNCED lyrics (empty when nothing synced
+ *  is shown); tap-to-sync reads the first line's timeMs from this. */
+let currentSyncedLines: LyricLine[] = [];
+/** Auto-scroll speed multiplier for unsynced (plain-text) lyrics, restored per-video. */
+let currentScrollSpeed = 1;
+/** Duration of the video currently loaded, in seconds; null until known. The
+ *  auto-scroll loop needs a total duration to scroll across. */
+let currentDurationSec: number | null = null;
+/** The running sync loop handle (synced lyrics only), so the nudge/tap-to-sync callbacks can update its offset. */
 let currentSyncLoop: SyncLoopHandle | null = null;
+/** The running auto-scroll loop handle (unsynced lyrics only), so the speed nudge callback can update its rate. */
+let currentAutoScrollLoop: AutoScrollLoopHandle | null = null;
 
 /**
- * Cleanup for resources tied to whatever is currently displayed (today, just
- * the sync loop). Registered where the resource is created; run wherever that
- * display is about to be replaced — `teardown` (navigation) and `load` (a
- * same-video reload) both qualify, so this is centralized rather than
- * duplicated as an ad-hoc nullable variable at each call site.
+ * Cleanup for resources tied to whatever is currently displayed (today, the
+ * sync loop or the auto-scroll loop — never both at once). Registered where
+ * the resource is created; run wherever that display is about to be replaced
+ * — `teardown` (navigation) and `load` (a same-video reload) both qualify, so
+ * this is centralized rather than duplicated as an ad-hoc nullable variable
+ * at each call site.
  */
 let disposers: Array<() => void> = [];
 
@@ -65,6 +82,23 @@ function disposeAll(): void {
   disposers = [];
 }
 
+/**
+ * Writes vm:${videoId} with the CURRENT offset/scroll-speed module state.
+ * Centralized so the two Sprint 5 fields can't be forgotten at any one of
+ * the four sites that need to persist them (offset nudge, tap-to-sync,
+ * speed nudge, and a fresh load) — a plain per-site object literal is how
+ * scrollSpeed would silently drop out of one of them.
+ */
+function persistVideoMeta(videoId: string, lrclibId: number, reason: string): void {
+  console.log(
+    `[karaoke] vm:write (${reason}) videoId=${videoId} lrclibId=${lrclibId}`,
+    `offsetSec=${currentOffsetSec} scrollSpeed=${currentScrollSpeed}`,
+  );
+  void chrome.storage.local.set({
+    [`vm:${videoId}`]: { lrclibId, offsetSec: currentOffsetSec, scrollSpeed: currentScrollSpeed },
+  });
+}
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function teardown(): void {
@@ -75,7 +109,11 @@ function teardown(): void {
   currentLrclibId = null;
   currentRecord = null;
   currentOffsetSec = 0;
+  currentSyncedLines = [];
+  currentScrollSpeed = 1;
+  currentDurationSec = null;
   currentSyncLoop = null;
+  currentAutoScrollLoop = null;
   isLoading = false;
   generation += 1;
 }
@@ -148,15 +186,37 @@ async function activate(videoId: string): Promise<void> {
 
   panel.onOffsetNudge((delta) => {
     currentOffsetSec += delta;
-    // Clamp to a reasonable range to prevent runaway offsets.
-    currentOffsetSec = Math.max(-30, Math.min(30, currentOffsetSec));
+    currentOffsetSec = Math.max(OFFSET_MIN_SEC, Math.min(OFFSET_MAX_SEC, currentOffsetSec));
     currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
     panel?.setOffsetControls(true, currentOffsetSec);
     if (currentVideoId !== null && currentLrclibId !== null) {
-      console.log(`[karaoke] vm:write (nudge) videoId=${currentVideoId} lrclibId=${currentLrclibId}`);
-      void chrome.storage.local.set({
-        [`vm:${currentVideoId}`]: { lrclibId: currentLrclibId, offsetSec: currentOffsetSec },
-      });
+      persistVideoMeta(currentVideoId, currentLrclibId, 'nudge');
+    }
+  });
+
+  panel.onTapSync(() => {
+    // "Sync here": read video.currentTime at the click and compute the offset
+    // that puts the first synced line exactly there. Motivating case: a
+    // cold-open intro longer than the ±30s nudge range can reach in a
+    // reasonable number of clicks — see SESSION.md Session 7.
+    const video = document.querySelector('video');
+    if (!video || currentSyncedLines.length === 0) return;
+    const firstLineMs = currentSyncedLines[0]!.timeMs;
+    currentOffsetSec = (video.currentTime * 1000 - firstLineMs) / 1000;
+    currentOffsetSec = Math.max(OFFSET_MIN_SEC, Math.min(OFFSET_MAX_SEC, currentOffsetSec));
+    currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
+    panel?.setOffsetControls(true, currentOffsetSec);
+    if (currentVideoId !== null && currentLrclibId !== null) {
+      persistVideoMeta(currentVideoId, currentLrclibId, 'tap-sync');
+    }
+  });
+
+  panel.onSpeedNudge((delta) => {
+    currentScrollSpeed = Math.max(SPEED_MIN, Math.min(SPEED_MAX, currentScrollSpeed + delta));
+    currentAutoScrollLoop?.setSpeed(currentScrollSpeed);
+    panel?.setSpeedControls(true, currentScrollSpeed);
+    if (currentVideoId !== null && currentLrclibId !== null) {
+      persistVideoMeta(currentVideoId, currentLrclibId, 'speed-nudge');
     }
   });
 
@@ -220,18 +280,16 @@ async function activate(videoId: string): Promise<void> {
     currentLrclibId = record.id;
     currentRecord = record;
     currentOffsetSec = 0; // reset offset when user manually picks a different song
+    currentScrollSpeed = 1; // reset scroll speed too — it belonged to the previous pick
 
-    // Write VideoMeta synchronously here so any subsequent nudge overwrites it
-    // rather than racing with the background PICK_CANDIDATE storage write.
     if (currentVideoId !== null) {
-      console.log(`[karaoke] vm:write (pick) videoId=${currentVideoId} lrclibId=${record.id}`);
-      void chrome.storage.local.set({
-        [`vm:${currentVideoId}`]: { lrclibId: record.id, offsetSec: 0 },
-      });
+      persistVideoMeta(currentVideoId, record.id, 'pick');
     }
 
     if (plan.synced) {
+      currentSyncedLines = plan.lines;
       panel!.setOffsetControls(true, 0);
+      panel!.setSpeedControls(false);
       const video = document.querySelector('video');
       if (video) {
         const loop = startSyncLoop(video, panel!, plan.lines, 0);
@@ -239,7 +297,17 @@ async function activate(videoId: string): Promise<void> {
         addDisposer(() => { loop.stop(); currentSyncLoop = null; });
       }
     } else {
+      currentSyncedLines = [];
       panel!.setOffsetControls(false);
+      const video = document.querySelector('video');
+      if (video && plan.lines.length > 0 && currentDurationSec !== null && currentDurationSec > 0) {
+        panel!.setSpeedControls(true, currentScrollSpeed);
+        const loop = startAutoScrollLoop(video, panel!, currentDurationSec, currentScrollSpeed);
+        currentAutoScrollLoop = loop;
+        addDisposer(() => { loop.stop(); currentAutoScrollLoop = null; });
+      } else {
+        panel!.setSpeedControls(false);
+      }
     }
 
     if (currentVideoId !== null) {
@@ -269,6 +337,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     // Recorded before any further await so that a later heading swap registers
     // as a change and triggers a reload.
     renderedTitle = song.rawTitle;
+    currentDurationSec = song.durationSec;
 
     const readings = normalizeTitleCandidates(song.rawTitle);
     const primary = readings[0]!;
@@ -302,42 +371,45 @@ async function load(videoId: string, gen: number): Promise<void> {
       panel.setStatus(response.message);
       panel.setLines([]);
       panel.setOffsetControls(false);
+      panel.setSpeedControls(false);
+      currentSyncedLines = [];
       return;
     }
 
     console.log(
       `[karaoke] load OK "${response.record.trackName} / ${response.record.artistName}"`,
-      `lrclibId=${response.lrclibId} offsetSec=${response.offsetSec}`,
+      `lrclibId=${response.lrclibId} offsetSec=${response.offsetSec} scrollSpeed=${response.scrollSpeed}`,
       `durationSec=${song.durationSec ?? 'null'}`,
     );
 
     const { record } = response;
-    // Preserve any live nudge already applied this session; only take the stored
-    // offset on the first load for this video (currentLrclibId was null before).
-    if (currentLrclibId === null) currentOffsetSec = response.offsetSec;
+    // Preserve any live nudge/tap/speed change already applied this session;
+    // only take the stored values on the first load for this video
+    // (currentLrclibId was null before).
+    if (currentLrclibId === null) {
+      currentOffsetSec = response.offsetSec;
+      currentScrollSpeed = response.scrollSpeed;
+    }
     currentLrclibId = response.lrclibId;
 
     // Write VideoMeta HERE (not in the background) so that only the authoritative
     // response — the one that passed the generation check — persists to storage.
-    console.log(
-      `[karaoke] vm:write videoId=${videoId} lrclibId=${response.lrclibId}`,
-      `gen=${gen} currentVideoId=${currentVideoId}`,
-    );
-    void chrome.storage.local.set({
-      [`vm:${videoId}`]: { lrclibId: response.lrclibId, offsetSec: currentOffsetSec },
-    });
+    persistVideoMeta(videoId, response.lrclibId, 'load');
     currentRecord = response.record;
     panel.setHeader(record.trackName, record.artistName);
 
     const plan = planRender(record);
 
-    // A previous load's sync loop (if any) is tied to lyrics we are about to
-    // replace — stop it exactly when the content it drove stops being shown.
+    // A previous load's sync loop or auto-scroll loop (if any) is tied to
+    // content we are about to replace — stop it exactly when the content it
+    // drove stops being shown.
     disposeAll();
     panel.setStatus(plan.status);
     panel.setLines(plan.lines, plan.synced);
 
     if (plan.synced) {
+      currentSyncedLines = plan.lines;
+      panel.setSpeedControls(false);
       const video = document.querySelector('video');
       if (video) {
         const syncLoop = startSyncLoop(video, panel, plan.lines, currentOffsetSec * 1000);
@@ -348,7 +420,17 @@ async function load(videoId: string, gen: number): Promise<void> {
         panel.setOffsetControls(false);
       }
     } else {
+      currentSyncedLines = [];
       panel.setOffsetControls(false);
+      const video = document.querySelector('video');
+      if (video && plan.lines.length > 0 && song.durationSec !== null && song.durationSec > 0) {
+        panel.setSpeedControls(true, currentScrollSpeed);
+        const loop = startAutoScrollLoop(video, panel, song.durationSec, currentScrollSpeed);
+        currentAutoScrollLoop = loop;
+        addDisposer(() => { loop.stop(); currentAutoScrollLoop = null; });
+      } else {
+        panel.setSpeedControls(false);
+      }
     }
   } finally {
     if (gen === generation) isLoading = false;
