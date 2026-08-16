@@ -1,8 +1,13 @@
 import { searchLyrics } from '../lrclib/client';
 import { handleFetchLyrics } from './handle-fetch-lyrics';
-// writeLyricsCache and writeVideoMeta are used by the PICK_CANDIDATE handler added in Task 4.
+import { handleSearchCandidates } from './handle-search-candidates';
 import { writeLyricsCache, writeVideoMeta, type StorageLike } from './storage';
-import type { FetchLyricsRequest } from '../messaging/types';
+import type {
+  FetchLyricsRequest,
+  SearchCandidatesRequest,
+  PickCandidateRequest,
+  PickCandidateResponse,
+} from '../messaging/types';
 
 console.log('[karaoke] service worker started');
 
@@ -25,6 +30,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     ).then(sendResponse);
     return true;
   }
+
+  if (message?.type === 'SEARCH_CANDIDATES') {
+    void handleSearchCandidates(
+      message as SearchCandidatesRequest,
+      (query) => searchLyrics(query),
+    ).then(sendResponse);
+    return true;
+  }
+
+  if (message?.type === 'PICK_CANDIDATE') {
+    const req = message as PickCandidateRequest;
+    void (async () => {
+      await writeLyricsCache(storage, req.record.id, req.record);
+      await writeVideoMeta(storage, req.videoId, { lrclibId: req.record.id, offsetSec: 0 });
+      sendResponse({ ok: true } satisfies PickCandidateResponse);
+    })();
+    return true;
+  }
+
   return false;
 });
 

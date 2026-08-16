@@ -17,3 +17,21 @@ export interface FetchLyricsRequest {
 export type FetchLyricsResponse =
   | { ok: true; record: LrclibRecord; lrclibId: number; offsetSec: number }
   | { ok: false; reason: 'not-found' | 'rate-limited' | 'network'; message: string };
+
+export interface SearchCandidatesRequest {
+  type: 'SEARCH_CANDIDATES';
+  /** Raw user-typed query, passed verbatim to lrclib /search?q= */
+  query: string;
+}
+
+export type SearchCandidatesResponse =
+  | { ok: true; candidates: LrclibRecord[] }
+  | { ok: false; reason: 'rate-limited' | 'network'; message: string };
+
+export interface PickCandidateRequest {
+  type: 'PICK_CANDIDATE';
+  videoId: string;
+  record: LrclibRecord;
+}
+
+export type PickCandidateResponse = { ok: true };
