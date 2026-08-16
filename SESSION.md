@@ -1,6 +1,6 @@
 # Session state — YouTube Karaoke Lyrics extension
 
-Last updated: 2026-08-16 (session 7)
+Last updated: 2026-08-16 (session 9)
 
 ## What this is
 
@@ -27,7 +27,7 @@ Latin-token query strategy.
 | 2.5 — matching + staleness fixes | done, browser-verified |
 | 3 — rAF sync engine, scrolling karaoke | done, browser-verified |
 | 4 — offset nudge, manual search, caching | done, browser-verified |
-| 5 — category gate, error states, polish | not started |
+| 5 — dual sync mode, tap-to-sync, detection signals | done, browser-verified (session 9) |
 
 ## Documents
 
@@ -315,6 +315,21 @@ Path inside `ytInitialData`:
 
 Not yet implemented — this is confirmed feasibility + the concrete extraction path, still needs a plan before building (new module, e.g. `music-attribution.ts`, feeding into `song-detector.ts`).
 
+## Sprint 5 — what shipped
+
+Plan: `docs/superpowers/plans/2026-08-16-karaoke-sprint-5-dual-sync-and-detection-signals.md`. All 7 tasks committed (base `328084a` → `10558f9`): `scrollSpeed` in storage/messaging, the pure auto-scroll engine, panel API (scroll position, speed controls, tap-to-sync button), the auto-scroll DOM loop, wiring dual sync mode + tap-to-sync into the content script, channel-name-as-artist fallback, and the YouTube Music attribution signal. 287 tests passing at that point, typecheck and build clean.
+
+### Session 9 — acceptance-check bugs found and fixed
+
+Running the plan's own "Sprint 5 acceptance check" in Opera GX (which had not actually been done before this session, despite the sprint table saying otherwise) surfaced real bugs the task-level reviews missed — consistent with this project's running lesson that only driving the real code path catches these:
+
+- **Tap-to-sync offset was inverted.** `onTapSync` in `content/index.ts` computed `offset = video.currentTime - firstLineMs` instead of `firstLineMs - video.currentTime`. Sync-loop applies offset as `video.currentTime + offsetMs`, so the sign had to be the latter for the clicked moment to land on the first line. One-line fix.
+- **Auto-scroll fought manual scrolling.** The original design suspended auto-scroll for 4s after a manual scroll (mirroring the synced sync-loop's behavior) and then snapped back. User feedback: a manual scroll should *stick* — the sweep should continue from wherever it was left, and only an explicit pause button should stop it. Rewrote `auto-scroll-loop.ts` from an absolute `scrollTop = f(video.currentTime)` model to a relative one: each frame advances an internally-tracked float position (`posPx`) by however far elapsed video time should move it, and only rebases onto the DOM's actual `scrollTop` when it detects a jump bigger than rounding noise (a real manual scroll). Added a pause/resume button (`PanelHandle.onScrollPauseToggle`, `.kx-scroll-pause`) as the only way to stop the sweep; `getScrollTop()` added to `PanelHandle`.
+- **Sweep didn't move at all at normal (1x) speed, only became visible at high video playback rates.** Root cause: a real browser's `scrollTop` is a whole pixel, and at speed 1 a single ~16ms frame advances well under 1px for any song of normal length. The first fix (above) still derived each frame's base from `panel.getScrollTop()`, which silently rounds away that sub-pixel progress every frame — nothing ever accumulated. Fixed by keeping `posPx` as the sole accumulation source (full float precision), only reading the DOM back to detect a genuine manual scroll (>1px jump), never as the routine per-frame base. Covered by a regression test using a mock panel that rounds `scrollTop` to an integer, the class of bug that would have caught this before it shipped.
+- **Added a 5s lead-in/lead-out pad.** Per request, the sweep now holds at the top for the first 5s of playback and reaches the bottom 5s before the video ends, instead of mapping the full `[0, duration]` span onto the list (most tracks have a few seconds of intro/outro with no lyrics on screen yet). Implemented as a time-remapping (`effectiveMs()`) in the loop, not a change to the pure engine functions.
+
+294 → 297 tests across these fixes (net, after several were rewritten rather than just added), typecheck and build clean throughout. Not yet committed as of this write-up — working tree has the Session 9 fixes uncommitted.
+
 ## Known debt (accumulated)
 
 - ~~**"First open" bug**~~ — **fixed, session 6.** Root cause found via live DOM inspection in Opera GX: `waitForSecondary()` queried bare `#secondary`, but YouTube's home/browse page (`ytd-browse`) has its own `#secondary` element that YouTube leaves cached in the DOM (`display:none`) after navigating away instead of removing it. On the very first navigation from `youtube.com` to a watch page, that stale hidden element sits earlier in the DOM than the real one inside `ytd-watch-flexy`, so the panel silently mounted into an invisible, orphaned container (lyrics still fetched fine — that's why logs looked normal). Fix: scoped the selector to `ytd-watch-flexy #secondary` and added an `offsetParent !== null` visibility check in `waitForSecondary()` so a matched-but-hidden container is rejected and polling continues.
@@ -326,9 +341,10 @@ Not yet implemented — this is confirmed feasibility + the concrete extraction 
 
 ## Next actions
 
-1. **Sprint 5** — category gate, error states, polish, plus the dual sync-mode / tap-to-sync feature ideas parked in the Session 7 section above (user wants to write the plan later, not yet).
-2. Decide on Musixmatch fallback based on Thai hit rate.
-3. Decide on dochord based on hit rate (chord source, not lyrics sync).
-4. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
-5. Close the remaining double-call race: a `reload` can fire in the 200ms window between `mountPanel` returning and `load()` setting `isLoading = true`, sending two `FETCH_LYRICS` messages for the same videoId. Benign with current fixes (both find same result) but wastes a network round-trip.
-6. Browser-verify the Session 7 panel changes (5-line window centering, overflow clip, static-lyric styling) in Opera GX — not yet done.
+1. **Commit the Session 9 fixes** (tap-to-sync sign, auto-scroll manual-scroll/pause redesign, sub-pixel accumulation fix, 5s edge pad) — working tree currently has them uncommitted.
+2. Category gate, error states, polish — the scope originally pencilled in for "Sprint 5" before it got reassigned to dual sync mode / detection signals; still not started.
+3. Decide on Musixmatch fallback based on Thai hit rate.
+4. Decide on dochord based on hit rate (chord source, not lyrics sync).
+5. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
+6. Close the remaining double-call race: a `reload` can fire in the 200ms window between `mountPanel` returning and `load()` setting `isLoading = true`, sending two `FETCH_LYRICS` messages for the same videoId. Benign with current fixes (both find same result) but wastes a network round-trip.
+7. Browser-verify the Session 7 panel changes (5-line window centering, overflow clip, static-lyric styling) in Opera GX — not yet done.

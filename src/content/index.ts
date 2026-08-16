@@ -203,7 +203,7 @@ async function activate(videoId: string): Promise<void> {
     const video = document.querySelector('video');
     if (!video || currentSyncedLines.length === 0) return;
     const firstLineMs = currentSyncedLines[0]!.timeMs;
-    currentOffsetSec = (video.currentTime * 1000 - firstLineMs) / 1000;
+    currentOffsetSec = (firstLineMs - video.currentTime * 1000) / 1000;
     currentOffsetSec = Math.max(OFFSET_MIN_SEC, Math.min(OFFSET_MAX_SEC, currentOffsetSec));
     currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
     panel?.setOffsetControls(true, currentOffsetSec);

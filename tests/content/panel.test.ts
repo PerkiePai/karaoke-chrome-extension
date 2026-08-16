@@ -311,6 +311,38 @@ describe('mountPanel', () => {
     });
   });
 
+  describe('onScrollPauseToggle', () => {
+    it('fires the callback with true on first click, and flips the button to ▶', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onScrollPauseToggle(cb);
+      const btn = shadowOf(host).querySelector<HTMLElement>('.kx-scroll-pause')!;
+      btn.click();
+      expect(cb).toHaveBeenCalledWith(true);
+      expect(btn.textContent).toBe('▶');
+    });
+
+    it('fires the callback with false on the second click, and flips the button back to ⏸', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onScrollPauseToggle(cb);
+      const btn = shadowOf(host).querySelector<HTMLElement>('.kx-scroll-pause')!;
+      btn.click();
+      btn.click();
+      expect(cb).toHaveBeenLastCalledWith(false);
+      expect(btn.textContent).toBe('⏸');
+    });
+
+    it('setSpeedControls resets an already-paused button back to ⏸', () => {
+      const panel = mountPanel(host);
+      const btn = shadowOf(host).querySelector<HTMLElement>('.kx-scroll-pause')!;
+      btn.click();
+      expect(btn.textContent).toBe('▶');
+      panel.setSpeedControls(true, 1.0);
+      expect(btn.textContent).toBe('⏸');
+    });
+  });
+
   describe('onTapSync', () => {
     it('fires the callback when "Sync here" is clicked', () => {
       const panel = mountPanel(host);

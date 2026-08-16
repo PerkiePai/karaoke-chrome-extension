@@ -27,6 +27,9 @@ export interface PanelHandle {
    *  loop for unsynced (plain-text) lyrics, which has no line index to
    *  highlight. */
   setScrollTop(px: number): void;
+  /** The lyrics list's current scrollTop — reflects manual scrolling done
+   *  since the last setScrollTop call, not just what was last written. */
+  getScrollTop(): number;
   /** Maximum scrollable distance in the lyrics list right now
    *  (scrollHeight − clientHeight, floored at 0). */
   getScrollExtentPx(): number;
@@ -36,6 +39,10 @@ export interface PanelHandle {
   setSpeedControls(visible: boolean, speed?: number): void;
   /** Replaces the callback fired when ▼ (delta = -0.1) or ▲ (delta = +0.1) is clicked. */
   onSpeedNudge(callback: (delta: number) => void): void;
+  /** Replaces the callback fired when the auto-scroll pause/resume button is
+   *  clicked, with the new paused state. Also resets the button to its
+   *  unpaused (⏸) display. */
+  onScrollPauseToggle(callback: (paused: boolean) => void): void;
   /** Replaces the callback fired when "Sync here" (tap-to-sync) is clicked. */
   onTapSync(callback: () => void): void;
   /** Shows or hides the "Not this one?" button. */
@@ -85,6 +92,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       <button class="kx-speed-down" title="Scroll slower">▼</button>
       <span class="kx-speed-value">1.0x</span>
       <button class="kx-speed-up" title="Scroll faster">▲</button>
+      <button class="kx-scroll-pause" title="Pause auto-scroll">⏸</button>
     </div>
     <div class="kx-correct-bar kx-hidden">
       <button class="kx-not-this">Not this one?</button>
@@ -134,6 +142,15 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   });
   find<HTMLElement>('.kx-speed-up').addEventListener('click', () => {
     speedNudgeListener?.(0.1);
+  });
+
+  let scrollPaused = false;
+  let scrollPauseListener: ((paused: boolean) => void) | null = null;
+  const scrollPauseBtn = find<HTMLElement>('.kx-scroll-pause');
+  scrollPauseBtn.addEventListener('click', () => {
+    scrollPaused = !scrollPaused;
+    scrollPauseBtn.textContent = scrollPaused ? '▶' : '⏸';
+    scrollPauseListener?.(scrollPaused);
   });
 
   let correctRequestListener: (() => void) | null = null;
@@ -210,6 +227,9 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     setScrollTop(px) {
       linesEl.scrollTop = px;
     },
+    getScrollTop() {
+      return linesEl.scrollTop;
+    },
     getScrollExtentPx() {
       return Math.max(0, linesEl.scrollHeight - linesEl.clientHeight);
     },
@@ -219,9 +239,16 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       if (visible && speed !== undefined) {
         find('.kx-speed-value').textContent = `${speed.toFixed(1)}x`;
       }
+      // A fresh auto-scroll session always starts unpaused, regardless of
+      // whatever the button showed for a previous video/pick.
+      scrollPaused = false;
+      scrollPauseBtn.textContent = '⏸';
     },
     onSpeedNudge(callback) {
       speedNudgeListener = callback;
+    },
+    onScrollPauseToggle(callback) {
+      scrollPauseListener = callback;
     },
     onTapSync(callback) {
       tapSyncListener = callback;

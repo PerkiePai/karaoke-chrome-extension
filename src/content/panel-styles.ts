@@ -160,4 +160,5 @@ export const PANEL_STYLES = `
   }
   .kx-speed button:hover { color: #fff; border-color: #aaa; }
   .kx-speed-value { min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
+  .kx-scroll-pause { margin-left: 4px; }
 `;
