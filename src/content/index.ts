@@ -184,7 +184,6 @@ async function activate(videoId: string): Promise<void> {
 
   panel.onCandidatePick((record) => {
     panel!.exitSearchMode();
-    panel!.showCorrectBar(true);
     panel!.setHeader(record.trackName, record.artistName);
 
     const plan = planRender(record);
@@ -275,7 +274,6 @@ async function load(videoId: string, gen: number): Promise<void> {
       panel.setStatus(response.message);
       panel.setLines([]);
       panel.setOffsetControls(false);
-      panel.showCorrectBar(true);
       return;
     }
 
@@ -294,8 +292,6 @@ async function load(videoId: string, gen: number): Promise<void> {
     disposeAll();
     panel.setStatus(plan.status);
     panel.setLines(plan.lines);
-
-    panel.showCorrectBar(true);
 
     if (plan.synced) {
       const video = document.querySelector('video');
