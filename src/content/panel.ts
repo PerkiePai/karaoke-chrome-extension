@@ -22,6 +22,22 @@ export interface PanelHandle {
   setOffsetControls(visible: boolean, offsetSec?: number): void;
   /** Replaces the callback fired when ◀ (delta = -0.25) or ▶ (delta = +0.25) is clicked. */
   onOffsetNudge(callback: (delta: number) => void): void;
+  /** Scrolls the lyrics list to an absolute pixel offset, bypassing the
+   *  active-line highlight logic in setActiveLine. Used by the auto-scroll
+   *  loop for unsynced (plain-text) lyrics, which has no line index to
+   *  highlight. */
+  setScrollTop(px: number): void;
+  /** Maximum scrollable distance in the lyrics list right now
+   *  (scrollHeight − clientHeight, floored at 0). */
+  getScrollExtentPx(): number;
+  /** Shows or hides the auto-scroll speed controls (▼ ▲) and updates the
+   *  displayed multiplier. Used only while unsynced (plain-text) lyrics are
+   *  showing — synced lyrics use setOffsetControls instead. */
+  setSpeedControls(visible: boolean, speed?: number): void;
+  /** Replaces the callback fired when ▼ (delta = -0.1) or ▲ (delta = +0.1) is clicked. */
+  onSpeedNudge(callback: (delta: number) => void): void;
+  /** Replaces the callback fired when "Sync here" (tap-to-sync) is clicked. */
+  onTapSync(callback: () => void): void;
   /** Shows or hides the "Not this one?" button. */
   showCorrectBar(visible: boolean): void;
   /** Pre-fills the search input with `query` and shows the search form. Hides any existing candidate list. */
@@ -63,6 +79,12 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       <button class="kx-offset-back" title="Shift lyrics earlier (−0.25 s)">◀</button>
       <span class="kx-offset-value">+0.00s</span>
       <button class="kx-offset-fwd" title="Shift lyrics later (+0.25 s)">▶</button>
+      <button class="kx-sync-here" title="Set the offset from this moment">Sync here</button>
+    </div>
+    <div class="kx-speed kx-hidden">
+      <button class="kx-speed-down" title="Scroll slower">▼</button>
+      <span class="kx-speed-value">1.0x</span>
+      <button class="kx-speed-up" title="Scroll faster">▲</button>
     </div>
     <div class="kx-correct-bar kx-hidden">
       <button class="kx-not-this">Not this one?</button>
@@ -99,6 +121,19 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   });
   find<HTMLElement>('.kx-offset-fwd').addEventListener('click', () => {
     offsetNudgeListener?.(0.25);
+  });
+
+  let tapSyncListener: (() => void) | null = null;
+  find<HTMLElement>('.kx-sync-here').addEventListener('click', () => {
+    tapSyncListener?.();
+  });
+
+  let speedNudgeListener: ((delta: number) => void) | null = null;
+  find<HTMLElement>('.kx-speed-down').addEventListener('click', () => {
+    speedNudgeListener?.(-0.1);
+  });
+  find<HTMLElement>('.kx-speed-up').addEventListener('click', () => {
+    speedNudgeListener?.(0.1);
   });
 
   let correctRequestListener: (() => void) | null = null;
@@ -171,6 +206,25 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     onOffsetNudge(callback) {
       offsetNudgeListener = callback;
+    },
+    setScrollTop(px) {
+      linesEl.scrollTop = px;
+    },
+    getScrollExtentPx() {
+      return Math.max(0, linesEl.scrollHeight - linesEl.clientHeight);
+    },
+    setSpeedControls(visible, speed) {
+      const el = find<HTMLElement>('.kx-speed');
+      el.classList.toggle('kx-hidden', !visible);
+      if (visible && speed !== undefined) {
+        find('.kx-speed-value').textContent = `${speed.toFixed(1)}x`;
+      }
+    },
+    onSpeedNudge(callback) {
+      speedNudgeListener = callback;
+    },
+    onTapSync(callback) {
+      tapSyncListener = callback;
     },
     showCorrectBar(visible) {
       find<HTMLElement>('.kx-correct-bar').classList.toggle('kx-hidden', !visible);

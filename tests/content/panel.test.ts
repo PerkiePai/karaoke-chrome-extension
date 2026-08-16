@@ -244,6 +244,83 @@ describe('mountPanel', () => {
     });
   });
 
+  describe('setScrollTop / getScrollExtentPx', () => {
+    it('sets scrollTop on the lyrics container', () => {
+      const panel = mountPanel(host);
+      panel.setLines(lines('a', 'b'), false);
+      const linesContainer = shadowOf(host).querySelector<HTMLElement>('.kx-lines')!;
+      panel.setScrollTop(42);
+      expect(linesContainer.scrollTop).toBe(42);
+    });
+
+    it('reports scrollHeight minus clientHeight as the scrollable extent', () => {
+      const panel = mountPanel(host);
+      const linesContainer = shadowOf(host).querySelector<HTMLElement>('.kx-lines')!;
+      Object.defineProperty(linesContainer, 'scrollHeight', { value: 500, configurable: true });
+      Object.defineProperty(linesContainer, 'clientHeight', { value: 200, configurable: true });
+      expect(panel.getScrollExtentPx()).toBe(300);
+    });
+
+    it('floors the extent at 0 when content is shorter than the container', () => {
+      const panel = mountPanel(host);
+      const linesContainer = shadowOf(host).querySelector<HTMLElement>('.kx-lines')!;
+      Object.defineProperty(linesContainer, 'scrollHeight', { value: 100, configurable: true });
+      Object.defineProperty(linesContainer, 'clientHeight', { value: 200, configurable: true });
+      expect(panel.getScrollExtentPx()).toBe(0);
+    });
+  });
+
+  describe('setSpeedControls', () => {
+    it('hides the speed bar by default', () => {
+      mountPanel(host);
+      const el = shadowOf(host).querySelector<HTMLElement>('.kx-speed')!;
+      expect(el.classList.contains('kx-hidden')).toBe(true);
+    });
+
+    it('shows the speed bar with a formatted multiplier when visible=true', () => {
+      const panel = mountPanel(host);
+      panel.setSpeedControls(true, 1.4);
+      const el = shadowOf(host).querySelector<HTMLElement>('.kx-speed')!;
+      expect(el.classList.contains('kx-hidden')).toBe(false);
+      expect(shadowOf(host).querySelector('.kx-speed-value')!.textContent).toBe('1.4x');
+    });
+
+    it('hides the bar again when called with visible=false', () => {
+      const panel = mountPanel(host);
+      panel.setSpeedControls(true, 1.0);
+      panel.setSpeedControls(false);
+      expect(shadowOf(host).querySelector<HTMLElement>('.kx-speed')!.classList.contains('kx-hidden')).toBe(true);
+    });
+  });
+
+  describe('onSpeedNudge', () => {
+    it('fires the callback with -0.1 when ▼ is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onSpeedNudge(cb);
+      shadowOf(host).querySelector<HTMLElement>('.kx-speed-down')!.click();
+      expect(cb).toHaveBeenCalledWith(-0.1);
+    });
+
+    it('fires the callback with +0.1 when ▲ is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onSpeedNudge(cb);
+      shadowOf(host).querySelector<HTMLElement>('.kx-speed-up')!.click();
+      expect(cb).toHaveBeenCalledWith(0.1);
+    });
+  });
+
+  describe('onTapSync', () => {
+    it('fires the callback when "Sync here" is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onTapSync(cb);
+      shadowOf(host).querySelector<HTMLElement>('.kx-sync-here')!.click();
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('search UI', () => {
     it('hides the correct-bar, search form, and candidate list by default', () => {
       mountPanel(host);

@@ -138,4 +138,26 @@ export const PANEL_STYLES = `
   .kx-candidate:hover { background: #1a1a1a; }
   .kx-candidate-title { font-size: 13px; color: #f1f1f1; }
   .kx-candidate-sub { font-size: 11px; color: #888; }
+  .kx-sync-here { margin-left: 4px; }
+  .kx-speed {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0 2px;
+    font-size: 12px;
+    color: #aaa;
+    border-bottom: 1px solid #303030;
+  }
+  .kx-speed button {
+    background: none;
+    border: 1px solid #555;
+    color: #aaa;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 1px 6px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .kx-speed button:hover { color: #fff; border-color: #aaa; }
+  .kx-speed-value { min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
 `;
