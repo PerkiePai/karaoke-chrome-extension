@@ -117,11 +117,53 @@ export function mountPanel(container: HTMLElement): PanelHandle {
 
   const linesEl = find<HTMLElement>('.kx-lines');
 
+  // Custom rAF-driven scroll instead of scrollTo({behavior: 'smooth'}):
+  // native smooth scrolling has no controllable duration, and some browsers
+  // (Firefox, when the OS "reduce motion" setting is on) silently downgrade
+  // it to an instant jump — which read as the line "warping" into place
+  // instead of sliding. Animating scrollTop ourselves guarantees the slide
+  // regardless of browser/OS motion settings.
+  let scrollAnimId: number | null = null;
+  function animateScrollTo(target: number, durationMs = 350): void {
+    if (scrollAnimId !== null) cancelAnimationFrame(scrollAnimId);
+    const start = linesEl.scrollTop;
+    const delta = target - start;
+    if (delta === 0) return;
+    const startTime = performance.now();
+    const step = (now: number): void => {
+      const t = Math.min(1, (now - startTime) / durationMs);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      linesEl.scrollTop = start + delta * eased;
+      scrollAnimId = t < 1 ? requestAnimationFrame(step) : null;
+    };
+    scrollAnimId = requestAnimationFrame(step);
+  }
+  function stopScrollAnim(): void {
+    if (scrollAnimId !== null) {
+      cancelAnimationFrame(scrollAnimId);
+      scrollAnimId = null;
+    }
+  }
+
   // A single replaceable slot, not an event-target list: only one sync loop
   // drives a panel at a time, so there is nothing to leak across restarts.
   let manualScrollListener: (() => void) | null = null;
-  linesEl.addEventListener('wheel', () => manualScrollListener?.(), { passive: true });
-  linesEl.addEventListener('touchmove', () => manualScrollListener?.(), { passive: true });
+  linesEl.addEventListener(
+    'wheel',
+    () => {
+      stopScrollAnim();
+      manualScrollListener?.();
+    },
+    { passive: true },
+  );
+  linesEl.addEventListener(
+    'touchmove',
+    () => {
+      stopScrollAnim();
+      manualScrollListener?.();
+    },
+    { passive: true },
+  );
 
   let offsetNudgeListener: ((delta: number) => void) | null = null;
   find<HTMLElement>('.kx-offset-back').addEventListener('click', () => {
@@ -206,7 +248,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
             (activeRect.top - containerRect.top) -
             linesEl.clientHeight / 2 +
             active.clientHeight / 2;
-          linesEl.scrollTo({ top: targetScroll, behavior: 'smooth' });
+          animateScrollTo(targetScroll);
         }
       }
     },
@@ -299,6 +341,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       candidatePickListener = callback;
     },
     destroy() {
+      stopScrollAnim();
       host.remove();
     },
   };

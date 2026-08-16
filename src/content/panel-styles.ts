@@ -34,7 +34,6 @@ export const PANEL_STYLES = `
     padding: 100px 0;
     flex: none;
     overflow-y: auto;
-    scroll-behavior: smooth;
     font-size: 14px;
     line-height: 1.9;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
@@ -50,7 +49,10 @@ export const PANEL_STYLES = `
     font-size: 15px;
     font-weight: 600;
     opacity: 0.55;
-    transition: color 0.25s ease, opacity 0.25s ease, font-size 0.25s ease;
+    transition:
+      color 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      font-size 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .kx-line-active {
     color: #ffffff;

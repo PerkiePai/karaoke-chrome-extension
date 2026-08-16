@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountPanel, PANEL_HOST_ID } from '../../src/content/panel';
 import type { LyricLine, LrclibRecord } from '../../src/core/types';
 
@@ -17,14 +17,47 @@ function lines(...texts: string[]): LyricLine[] {
   return texts.map((text, i) => ({ timeMs: i * 1000, text }));
 }
 
+/** A controllable fake rAF: captures the callback instead of scheduling it,
+ * so the test decides exactly when a frame runs. Mirrors the helper in
+ * sync-loop.test.ts — setActiveLine's scroll-slide animation drives itself
+ * via requestAnimationFrame rather than scrollTo({behavior: 'smooth'}). */
+function fakeRaf() {
+  let nextId = 1;
+  const pending = new Map<number, FrameRequestCallback>();
+  return {
+    requestAnimationFrame: vi.fn((cb: FrameRequestCallback) => {
+      const id = nextId++;
+      pending.set(id, cb);
+      return id;
+    }),
+    cancelAnimationFrame: vi.fn((id: number) => {
+      pending.delete(id);
+    }),
+    runFrame(now = 0) {
+      const callbacks = [...pending.values()];
+      pending.clear();
+      for (const cb of callbacks) cb(now);
+    },
+    pendingCount() {
+      return pending.size;
+    },
+  };
+}
+
 describe('mountPanel', () => {
   let host: HTMLElement;
+  let raf: ReturnType<typeof fakeRaf>;
   beforeEach(() => {
     host = container();
-    // jsdom does not implement scrollIntoView or scrollTo on elements;
-    // setActiveLine uses scrollTo on the lyrics container, so tests supply it.
+    // jsdom does not implement scrollIntoView on elements.
     Element.prototype.scrollIntoView = vi.fn();
-    HTMLElement.prototype.scrollTo = vi.fn() as typeof HTMLElement.prototype.scrollTo;
+    raf = fakeRaf();
+    vi.stubGlobal('requestAnimationFrame', raf.requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', raf.cancelAnimationFrame);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('attaches a host element with an open shadow root', () => {
@@ -139,20 +172,26 @@ describe('mountPanel', () => {
       expect(items[1]!.classList.contains('kx-line-active')).toBe(false);
     });
 
-    it('scrolls the lyrics container (not the page) when autoScroll is true', () => {
+    it('slides the lyrics container (not the page) toward the active line when autoScroll is true', () => {
       const panel = mountPanel(host);
       panel.setLines(lines('a', 'b'));
-      panel.setActiveLine(1, true);
       const linesContainer = shadowOf(host).querySelector<HTMLElement>('.kx-lines')!;
-      expect(linesContainer.scrollTo).toHaveBeenCalledWith({ top: expect.any(Number), behavior: 'smooth' });
+      Object.defineProperty(linesContainer.children[1]!, 'clientHeight', { value: 40, configurable: true });
+      const before = performance.now();
+      panel.setActiveLine(1, true);
+      // The slide is driven by our own rAF loop, not scrollTo({behavior: 'smooth'})
+      // — that has no controllable duration and some browsers (Firefox with
+      // the OS "reduce motion" setting) silently turn it into an instant jump.
+      expect(raf.pendingCount()).toBe(1);
+      raf.runFrame(before + 100000); // far past the animation's duration
+      expect(linesContainer.scrollTop).not.toBe(0);
     });
 
     it('does not scroll when autoScroll is false', () => {
       const panel = mountPanel(host);
       panel.setLines(lines('a', 'b'));
       panel.setActiveLine(1, false);
-      const linesContainer = shadowOf(host).querySelector<HTMLElement>('.kx-lines')!;
-      expect(linesContainer.scrollTo).not.toHaveBeenCalled();
+      expect(raf.pendingCount()).toBe(0);
     });
   });
 
