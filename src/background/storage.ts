@@ -55,7 +55,8 @@ export async function writeLyricsCache(
 ): Promise<void> {
   const idStr = String(lrclibId);
   const orderResult = await storage.get([LC_ORDER_KEY]);
-  const order = (orderResult[LC_ORDER_KEY] as string[] | undefined) ?? [];
+  const raw = orderResult[LC_ORDER_KEY];
+  const order: string[] = Array.isArray(raw) ? raw : [];
 
   const updated = [idStr, ...order.filter((k) => k !== idStr)];
 
