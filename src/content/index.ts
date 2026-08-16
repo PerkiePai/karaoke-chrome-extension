@@ -4,6 +4,7 @@ import { decideReconcile } from './reconcile';
 import { planRender } from './render-plan';
 import { startSyncLoop, type SyncLoopHandle } from './sync-loop';
 import { startAutoScrollLoop, type AutoScrollLoopHandle } from './auto-scroll-loop';
+import { fetchMusicAttribution } from './music-attribution';
 import { parseVideoId } from '../core/youtube-url';
 import { normalizeTitleCandidates } from '../core/title-normalizer';
 import type { LyricLine } from '../core/types';
@@ -326,7 +327,10 @@ async function activate(videoId: string): Promise<void> {
 async function load(videoId: string, gen: number): Promise<void> {
   isLoading = true;
   try {
-    const song = await waitForSong(videoId);
+    const [song, attribution] = await Promise.all([
+      waitForSong(videoId),
+      fetchMusicAttribution(videoId),
+    ]);
     if (gen !== generation || !panel) return;
 
     if (!song) {
@@ -339,11 +343,24 @@ async function load(videoId: string, gen: number): Promise<void> {
     renderedTitle = song.rawTitle;
     currentDurationSec = song.durationSec;
 
-    const readings = normalizeTitleCandidates(song.rawTitle);
-    if (readings[0]!.artist === null && song.channelName) {
+    const titleReadings = normalizeTitleCandidates(song.rawTitle);
+    if (titleReadings[0]!.artist === null && song.channelName) {
       console.log(`[karaoke] using channel-name fallback artist: "${song.channelName}"`);
-      readings.push({ artist: song.channelName, track: readings[0]!.track });
+      titleReadings.push({ artist: song.channelName, track: titleReadings[0]!.track });
     }
+    // The Music attribution panel, when present, is authoritative label
+    // metadata (the same data YouTube's own Content ID system uses) rather
+    // than a guess from the raw title — so it leads the reading list. It
+    // still goes through the normal search + score gate below rather than
+    // bypassing it outright: this codebase's hard-won lesson (SESSION.md,
+    // "Hard-won lessons") is that no single heuristic, however confident,
+    // gets to skip verification against the actual LRCLIB record.
+    if (attribution) {
+      console.log(`[karaoke] using Music attribution: "${attribution.title}" / "${attribution.artist}"`);
+    }
+    const readings = attribution
+      ? [{ artist: attribution.artist, track: attribution.title }, ...titleReadings]
+      : titleReadings;
     const primary = readings[0]!;
     panel.setHeader(primary.track, primary.artist ?? 'unknown artist');
 
