@@ -67,6 +67,7 @@ export async function handleFetchLyrics(
           record: cached,
           lrclibId: existingMeta.lrclibId,
           offsetSec: existingMeta.offsetSec,
+          scrollSpeed: existingMeta.scrollSpeed ?? 1,
         };
       }
       console.warn(
@@ -123,13 +124,13 @@ export async function handleFetchLyrics(
     return { ok: false, reason: 'not-found', message: 'No lyrics found for this song.' };
   }
 
-  // Preserve any offset the user previously set for this video, but only when
-  // the fresh search found the SAME lrclibId — if a different record was matched
-  // the old offset was calibrated for the wrong song and should not carry over.
-  const offsetSec =
-    existingMeta !== null && existingMeta.lrclibId === best.record.id
-      ? existingMeta.offsetSec
-      : 0;
+  // Preserve any offset/scroll-speed the user previously set for this video,
+  // but only when the fresh search found the SAME lrclibId — if a different
+  // record was matched, those values were calibrated for the wrong song and
+  // must not carry over.
+  const sameRecordAsBefore = existingMeta !== null && existingMeta.lrclibId === best.record.id;
+  const offsetSec = sameRecordAsBefore ? existingMeta!.offsetSec : 0;
+  const scrollSpeed = sameRecordAsBefore ? (existingMeta!.scrollSpeed ?? 1) : 1;
 
   if (storage) {
     await writeLyricsCache(storage, best.record.id, best.record);
@@ -140,8 +141,8 @@ export async function handleFetchLyrics(
 
   console.log(
     `[karaoke] search OK "${best.record.trackName} / ${best.record.artistName}"`,
-    `lrclibId=${best.record.id} score=${best.score.toFixed(3)} offsetSec=${offsetSec}`,
+    `lrclibId=${best.record.id} score=${best.score.toFixed(3)} offsetSec=${offsetSec} scrollSpeed=${scrollSpeed}`,
   );
 
-  return { ok: true, record: best.record, lrclibId: best.record.id, offsetSec };
+  return { ok: true, record: best.record, lrclibId: best.record.id, offsetSec, scrollSpeed };
 }

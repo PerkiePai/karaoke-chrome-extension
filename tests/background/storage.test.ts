@@ -64,6 +64,18 @@ describe('readVideoMeta / writeVideoMeta', () => {
     await writeVideoMeta(s, 'abc123', { lrclibId: 1, offsetSec: 0.5 });
     expect(await readVideoMeta(s, 'abc123')).toEqual({ lrclibId: 1, offsetSec: 0.5 });
   });
+
+  it('round-trips a VideoMeta that includes scrollSpeed', async () => {
+    const s = mockStorage();
+    await writeVideoMeta(s, 'abc123', { lrclibId: 42, offsetSec: 0, scrollSpeed: 1.4 });
+    expect(await readVideoMeta(s, 'abc123')).toEqual({ lrclibId: 42, offsetSec: 0, scrollSpeed: 1.4 });
+  });
+
+  it('round-trips a VideoMeta without scrollSpeed (pre-Sprint-5 shape)', async () => {
+    const s = mockStorage();
+    await writeVideoMeta(s, 'abc123', { lrclibId: 42, offsetSec: 0 });
+    expect(await readVideoMeta(s, 'abc123')).toEqual({ lrclibId: 42, offsetSec: 0 });
+  });
 });
 
 describe('readLyricsCache / writeLyricsCache', () => {

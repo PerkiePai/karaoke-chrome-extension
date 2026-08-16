@@ -9,6 +9,10 @@ export interface StorageLike {
 export interface VideoMeta {
   lrclibId: number;
   offsetSec: number;
+  /** Auto-scroll speed multiplier for unsynced (plain-text) lyrics, e.g.
+   *  1.0 = default pace. Absent on VideoMeta written before Sprint 5 or for
+   *  a video that has never shown unsynced lyrics. */
+  scrollSpeed?: number;
 }
 
 const VM_PREFIX = 'vm:';

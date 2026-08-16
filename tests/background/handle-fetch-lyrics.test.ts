@@ -235,4 +235,34 @@ describe('handleFetchLyrics — cache behavior', () => {
     const result = await handleFetchLyrics(request, async () => [wonderwall], s);
     expect(result).toMatchObject({ ok: true, offsetSec: 1.25 });
   });
+
+  it('returns scrollSpeed=1 by default when no VideoMeta exists', async () => {
+    const s = storage();
+    const result = await handleFetchLyrics(request, async () => [wonderwall], s);
+    expect(result).toMatchObject({ ok: true, scrollSpeed: 1 });
+  });
+
+  it('preserves a previously stored scrollSpeed on a cache hit', async () => {
+    const s = storage();
+    await handleFetchLyrics(request, async () => [wonderwall], s);
+    await writeVideoMeta(s, 'abc123', { lrclibId: 99, offsetSec: 0, scrollSpeed: 1.6 });
+    const result = await handleFetchLyrics(request, async () => [wonderwall], s);
+    expect(result).toMatchObject({ ok: true, scrollSpeed: 1.6 });
+  });
+
+  it('preserves a previously stored scrollSpeed on a cache miss (re-search)', async () => {
+    const s = storage();
+    await handleFetchLyrics(request, async () => [wonderwall], s);
+    await writeVideoMeta(s, 'abc123', { lrclibId: 99, offsetSec: 0, scrollSpeed: 1.6 });
+    await s.remove(['lc:99']);
+    const result = await handleFetchLyrics(request, async () => [wonderwall], s);
+    expect(result).toMatchObject({ ok: true, scrollSpeed: 1.6 });
+  });
+
+  it('resets scrollSpeed to 1 when a fresh search finds a different lrclibId', async () => {
+    const s = storage();
+    await s.set({ 'vm:abc123': { lrclibId: 200, offsetSec: 0, scrollSpeed: 2.0 } });
+    const result = await handleFetchLyrics(request, async () => [wonderwall], s);
+    expect(result).toMatchObject({ ok: true, lrclibId: 99, scrollSpeed: 1 });
+  });
 });
