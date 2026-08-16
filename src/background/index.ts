@@ -1,5 +1,6 @@
 import { searchLyrics } from '../lrclib/client';
 import { handleFetchLyrics } from './handle-fetch-lyrics';
+// writeLyricsCache and writeVideoMeta are used by the PICK_CANDIDATE handler added in Task 4.
 import { writeLyricsCache, writeVideoMeta, type StorageLike } from './storage';
 import type { FetchLyricsRequest } from '../messaging/types';
 
