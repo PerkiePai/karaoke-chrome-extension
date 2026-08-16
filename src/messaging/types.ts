@@ -15,5 +15,5 @@ export interface FetchLyricsRequest {
 }
 
 export type FetchLyricsResponse =
-  | { ok: true; record: LrclibRecord }
+  | { ok: true; record: LrclibRecord; lrclibId: number; offsetSec: number }
   | { ok: false; reason: 'not-found' | 'rate-limited' | 'network'; message: string };

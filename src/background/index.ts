@@ -1,22 +1,30 @@
 import { searchLyrics } from '../lrclib/client';
 import { handleFetchLyrics } from './handle-fetch-lyrics';
+import { writeLyricsCache, writeVideoMeta, type StorageLike } from './storage';
 import type { FetchLyricsRequest } from '../messaging/types';
 
 console.log('[karaoke] service worker started');
+
+const storage: StorageLike = {
+  get: (keys) => chrome.storage.local.get(keys) as Promise<Record<string, unknown>>,
+  set: (items) => chrome.storage.local.set(items),
+  remove: (keys) => chrome.storage.local.remove(keys),
+};
 
 chrome.runtime.onInstalled.addListener(() => {
   void runSmokeTest();
 });
 
-chrome.runtime.onMessage.addListener((message: FetchLyricsRequest, _sender, sendResponse) => {
-  if (message?.type !== 'FETCH_LYRICS') return false;
-
-  void handleFetchLyrics(message, (query) => searchLyrics(query)).then(sendResponse);
-
-  // Returning true keeps the message channel open for the async sendResponse
-  // above. Without it Chromium closes the channel and the caller gets
-  // undefined. This is the single most common MV3 messaging bug.
-  return true;
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'FETCH_LYRICS') {
+    void handleFetchLyrics(
+      message as FetchLyricsRequest,
+      (query) => searchLyrics(query),
+      storage,
+    ).then(sendResponse);
+    return true;
+  }
+  return false;
 });
 
 async function runSmokeTest(): Promise<void> {

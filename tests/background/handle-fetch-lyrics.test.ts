@@ -3,6 +3,7 @@ import { handleFetchLyrics } from '../../src/background/handle-fetch-lyrics';
 import { LrclibRateLimitError } from '../../src/lrclib/client';
 import type { FetchLyricsRequest } from '../../src/messaging/types';
 import type { LrclibRecord } from '../../src/core/types';
+import { readLyricsCache, readVideoMeta, writeVideoMeta, type StorageLike } from '../../src/background/storage';
 
 const request: FetchLyricsRequest = {
   type: 'FETCH_LYRICS',
@@ -26,7 +27,7 @@ const wonderwall: LrclibRecord = {
 describe('handleFetchLyrics', () => {
   it('returns the best matching record', async () => {
     const result = await handleFetchLyrics(request, async () => [wonderwall]);
-    expect(result).toEqual({ ok: true, record: wonderwall });
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
   });
 
   it('searches using artist and track together', async () => {
@@ -91,7 +92,7 @@ describe('handleFetchLyrics with alternate readings', () => {
     syncedLyrics: '[00:01.00]x',
   };
 
-  it('searches with the Latin token only, not the Thai text', async () => {
+  it('prepends the Thai field text to the Latin artist token', async () => {
     const queries: string[] = [];
     await handleFetchLyrics(
       { type: 'FETCH_LYRICS', videoId: 'v', artist: 'คืนจันทร์', track: 'LOSO', durationSec: 240 },
@@ -100,7 +101,7 @@ describe('handleFetchLyrics with alternate readings', () => {
         return [thai];
       },
     );
-    expect(queries).toEqual(['LOSO']);
+    expect(queries).toEqual(['คืนจันทร์ LOSO']);
   });
 
   it('matches via the swapped reading when the primary one is backwards', async () => {
@@ -115,7 +116,7 @@ describe('handleFetchLyrics with alternate readings', () => {
       },
       async () => [thai],
     );
-    expect(result).toEqual({ ok: true, record: thai });
+    expect(result).toMatchObject({ ok: true, record: thai });
   });
 
   it('issues exactly one search no matter how many readings are offered', async () => {
@@ -151,5 +152,58 @@ describe('handleFetchLyrics with alternate readings', () => {
       async () => [unrelated],
     );
     expect(result).toMatchObject({ ok: false, reason: 'not-found' });
+  });
+});
+
+describe('handleFetchLyrics — cache behavior', () => {
+  const storage = (): StorageLike => {
+    const store = new Map<string, unknown>();
+    return {
+      async get(keys) {
+        const r: Record<string, unknown> = {};
+        for (const k of keys) { if (store.has(k)) r[k] = store.get(k); }
+        return r;
+      },
+      async set(items) { for (const [k, v] of Object.entries(items)) store.set(k, v); },
+      async remove(keys) { for (const k of keys) store.delete(k); },
+    };
+  };
+
+  it('returns lrclibId and offsetSec in the ok response when no storage is provided', async () => {
+    const result = await handleFetchLyrics(request, async () => [wonderwall]);
+    expect(result).toMatchObject({ ok: true, lrclibId: 99, offsetSec: 0 });
+  });
+
+  it('writes video meta and lyrics cache on a fresh fetch', async () => {
+    const s = storage();
+    const result = await handleFetchLyrics(request, async () => [wonderwall], s);
+    expect(result).toMatchObject({ ok: true, lrclibId: 99, offsetSec: 0 });
+    // verify the cache was written
+    const cached = await readLyricsCache(s, 99);
+    expect(cached).toEqual(wonderwall);
+    const meta = await readVideoMeta(s, 'abc123');
+    expect(meta).toEqual({ lrclibId: 99, offsetSec: 0 });
+  });
+
+  it('returns from cache on a repeat visit without calling search', async () => {
+    const s = storage();
+    let calls = 0;
+    await handleFetchLyrics(request, async () => { calls++; return [wonderwall]; }, s);
+    const result = await handleFetchLyrics(request, async () => { calls++; return [wonderwall]; }, s);
+    expect(calls).toBe(1); // second call served from cache
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+  });
+
+  it('preserves a previously stored offsetSec on a cache miss (re-search)', async () => {
+    const s = storage();
+    // First visit: search, cache, offset stays 0
+    await handleFetchLyrics(request, async () => [wonderwall], s);
+    // Simulate user having set offset manually after the first visit
+    await writeVideoMeta(s, 'abc123', { lrclibId: 99, offsetSec: 1.25 });
+    // Evict lyrics cache so it falls through to search
+    await s.remove(['lc:99']);
+    // Second visit: cache miss → re-search → should preserve offsetSec=1.25
+    const result = await handleFetchLyrics(request, async () => [wonderwall], s);
+    expect(result).toMatchObject({ ok: true, offsetSec: 1.25 });
   });
 });

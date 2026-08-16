@@ -1,4 +1,4 @@
-import { mountPanel, type PanelHandle } from './panel';
+import { mountPanel, PANEL_HOST_ID, type PanelHandle } from './panel';
 import { detectSong, type DetectedSong } from './song-detector';
 import { decideReconcile } from './reconcile';
 import { planRender } from './render-plan';
@@ -25,6 +25,11 @@ let isLoading = false;
  */
 let generation = 0;
 
+/** lrclibId of the record currently displayed; null while no lyrics are shown. */
+let currentLrclibId: number | null = null;
+/** Offset applied to the sync engine for the current video, in seconds. */
+let currentOffsetSec = 0;
+
 /**
  * Cleanup for resources tied to whatever is currently displayed (today, just
  * the sync loop). Registered where the resource is created; run wherever that
@@ -50,6 +55,8 @@ function teardown(): void {
   panel?.destroy();
   panel = null;
   renderedTitle = null;
+  currentLrclibId = null;
+  currentOffsetSec = 0;
   isLoading = false;
   generation += 1;
 }
@@ -154,6 +161,8 @@ async function load(videoId: string, gen: number): Promise<void> {
     }
 
     const { record } = response;
+    currentLrclibId = response.lrclibId;
+    currentOffsetSec = response.offsetSec;
     panel.setHeader(record.trackName, record.artistName);
 
     const plan = planRender(record);
@@ -177,6 +186,14 @@ async function load(videoId: string, gen: number): Promise<void> {
 }
 
 function reconcile(): void {
+  // YouTube can replace #secondary during its own initial render, silently
+  // detaching the panel's host element from the DOM. Detect this and reset so
+  // the next iteration triggers a fresh activate into the new #secondary.
+  if (panel !== null && document.querySelector(`#${PANEL_HOST_ID}`) === null) {
+    teardown();
+    currentVideoId = null;
+  }
+
   const urlVideoId = parseVideoId(location.href);
   const detectedTitle = urlVideoId ? (detectSong(document, urlVideoId)?.rawTitle ?? null) : null;
 
