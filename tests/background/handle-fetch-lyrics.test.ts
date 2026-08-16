@@ -174,23 +174,52 @@ describe('handleFetchLyrics — cache behavior', () => {
     expect(result).toMatchObject({ ok: true, lrclibId: 99, offsetSec: 0 });
   });
 
-  it('writes video meta and lyrics cache on a fresh fetch', async () => {
+  it('writes the lyrics cache on a fresh fetch but not VideoMeta', async () => {
     const s = storage();
     const result = await handleFetchLyrics(request, async () => [wonderwall], s);
     expect(result).toMatchObject({ ok: true, lrclibId: 99, offsetSec: 0 });
-    // verify the cache was written
+    // lyrics record written so future cache hits can validate it
     const cached = await readLyricsCache(s, 99);
     expect(cached).toEqual(wonderwall);
+    // VideoMeta is written by the content script after its generation check,
+    // not by the background — so it must be absent here.
     const meta = await readVideoMeta(s, 'abc123');
-    expect(meta).toEqual({ lrclibId: 99, offsetSec: 0 });
+    expect(meta).toBeNull();
   });
 
   it('returns from cache on a repeat visit without calling search', async () => {
     const s = storage();
     let calls = 0;
-    await handleFetchLyrics(request, async () => { calls++; return [wonderwall]; }, s);
+    const first = await handleFetchLyrics(request, async () => { calls++; return [wonderwall]; }, s);
+    // Content script writes VideoMeta after receiving the response (the background no longer does this).
+    await writeVideoMeta(s, request.videoId, { lrclibId: first.ok ? first.lrclibId : 0, offsetSec: 0 });
     const result = await handleFetchLyrics(request, async () => { calls++; return [wonderwall]; }, s);
     expect(calls).toBe(1); // second call served from cache
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+  });
+
+  it('rejects a stale cache entry and re-searches when the cached record no longer matches', async () => {
+    const s = storage();
+    // Write a VideoMeta pointing at a record that has nothing to do with the
+    // current request (Oasis/Wonderwall), simulating a prior wrong match.
+    const staleRecord: LrclibRecord = {
+      ...wonderwall,
+      id: 200,
+      trackName: 'Unrelated',
+      artistName: 'Nobody',
+      duration: 120,
+    };
+    await s.set({ 'vm:abc123': { lrclibId: 200, offsetSec: 0 } });
+    await s.set({ 'lc:200': staleRecord });
+
+    let searchCalled = false;
+    const result = await handleFetchLyrics(
+      request,
+      async () => { searchCalled = true; return [wonderwall]; },
+      s,
+    );
+
+    expect(searchCalled).toBe(true); // cache rejected, fresh search ran
     expect(result).toMatchObject({ ok: true, record: wonderwall });
   });
 

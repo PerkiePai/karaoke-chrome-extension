@@ -1,11 +1,18 @@
 import { LrclibRateLimitError } from '../lrclib/client';
-import { hasUsableLyrics, pickBestScored, type ScoredCandidate } from '../core/match-scorer';
+import {
+  hasUsableLyrics,
+  pickBestScored,
+  scoreCandidates,
+  MATCH_THRESHOLD,
+  MIN_TRACK_SIMILARITY,
+  MIN_ARTIST_SIMILARITY,
+  type ScoredCandidate,
+} from '../core/match-scorer';
 import { buildSearchQuery } from '../core/search-query';
 import {
   readVideoMeta,
   readLyricsCache,
   writeLyricsCache,
-  writeVideoMeta,
   type StorageLike,
 } from './storage';
 import type { LrclibRecord } from '../core/types';
@@ -28,13 +35,52 @@ export async function handleFetchLyrics(
   if (existingMeta) {
     const cached = await readLyricsCache(storage!, existingMeta.lrclibId);
     if (cached) {
-      return {
-        ok: true,
-        record: cached,
-        lrclibId: existingMeta.lrclibId,
-        offsetSec: existingMeta.offsetSec,
-      };
+      // Re-score the cached record against the current song readings before
+      // serving it. A record stored under a previous wrong match (or an old
+      // scorer run) would otherwise be returned forever — the root cause of
+      // "change video but lyrics don't change".
+      const allReadings = [
+        { artist: request.artist, track: request.track },
+        ...(request.alternates ?? []),
+      ];
+      let bestHitScore = 0;
+      const cacheValid = allReadings.some(({ artist, track }) => {
+        const hit = scoreCandidates(
+          { artist, track, durationSec: request.durationSec },
+          [cached],
+        )[0];
+        if (hit !== undefined && hit.score > bestHitScore) bestHitScore = hit.score;
+        return (
+          hit !== undefined &&
+          hit.score >= MATCH_THRESHOLD &&
+          hit.trackSimilarity >= MIN_TRACK_SIMILARITY &&
+          (hit.artistSimilarity === null || hit.artistSimilarity >= MIN_ARTIST_SIMILARITY)
+        );
+      });
+      if (cacheValid) {
+        console.log(
+          `[karaoke] cache HIT videoId=${request.videoId} "${request.track}"`,
+          `lrclibId=${existingMeta.lrclibId} score=${bestHitScore.toFixed(3)} offsetSec=${existingMeta.offsetSec}`,
+        );
+        return {
+          ok: true,
+          record: cached,
+          lrclibId: existingMeta.lrclibId,
+          offsetSec: existingMeta.offsetSec,
+        };
+      }
+      console.warn(
+        `[karaoke] cache REJECTED videoId=${request.videoId} "${request.track}"`,
+        `— cached="${cached.trackName} / ${cached.artistName}" lrclibId=${existingMeta.lrclibId}`,
+        `score=${bestHitScore.toFixed(3)} < threshold=${MATCH_THRESHOLD} → re-searching`,
+      );
+      // Validation failed — fall through to a fresh search rather than
+      // serving stale or mismatched lyrics.
+    } else {
+      console.log(`[karaoke] cache MISS "${request.track}" (lrclibId=${existingMeta.lrclibId} not in lc: store) → searching`);
     }
+  } else {
+    console.log(`[karaoke] no VideoMeta for videoId=${request.videoId} → first visit, searching`);
   }
 
   const readings = [
@@ -77,13 +123,25 @@ export async function handleFetchLyrics(
     return { ok: false, reason: 'not-found', message: 'No lyrics found for this song.' };
   }
 
-  // Preserve any offset the user previously set for this video; default to 0 on first visit.
-  const offsetSec = existingMeta?.offsetSec ?? 0;
+  // Preserve any offset the user previously set for this video, but only when
+  // the fresh search found the SAME lrclibId — if a different record was matched
+  // the old offset was calibrated for the wrong song and should not carry over.
+  const offsetSec =
+    existingMeta !== null && existingMeta.lrclibId === best.record.id
+      ? existingMeta.offsetSec
+      : 0;
 
   if (storage) {
     await writeLyricsCache(storage, best.record.id, best.record);
-    await writeVideoMeta(storage, request.videoId, { lrclibId: best.record.id, offsetSec });
+    // VideoMeta (vm:videoId) is written by the content script after its
+    // generation check passes — doing it here would race with concurrent
+    // in-flight requests and corrupt the stored lrclibId.
   }
+
+  console.log(
+    `[karaoke] search OK "${best.record.trackName} / ${best.record.artistName}"`,
+    `lrclibId=${best.record.id} score=${best.score.toFixed(3)} offsetSec=${offsetSec}`,
+  );
 
   return { ok: true, record: best.record, lrclibId: best.record.id, offsetSec };
 }

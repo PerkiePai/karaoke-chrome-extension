@@ -97,13 +97,28 @@ async function waitForSecondary(): Promise<HTMLElement | null> {
  */
 async function waitForSong(videoId: string): Promise<DetectedSong | null> {
   const deadline = Date.now() + TITLE_TIMEOUT_MS;
+  // YouTube updates the <video> element (duration) before it updates the page
+  // heading. A single poll can therefore return the new video's duration paired
+  // with the previous video's title. Require two consecutive polls with the
+  // same rawTitle before committing — adds one SECONDARY_POLL_MS of latency
+  // but prevents writing the wrong lrclibId into storage.
+  let candidate: DetectedSong | null = null;
   let withoutDuration: DetectedSong | null = null;
 
   while (Date.now() < deadline) {
     const song = detectSong(document, videoId);
     if (song) {
-      if (song.durationSec !== null) return song;
-      withoutDuration = song;
+      if (song.durationSec !== null) {
+        if (candidate !== null && candidate.rawTitle === song.rawTitle) {
+          return song;
+        }
+        candidate = song;
+      } else {
+        withoutDuration = song;
+        candidate = null;
+      }
+    } else {
+      candidate = null;
     }
     await delay(SECONDARY_POLL_MS);
   }
@@ -128,6 +143,7 @@ async function activate(videoId: string): Promise<void> {
     currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
     panel?.setOffsetControls(true, currentOffsetSec);
     if (currentVideoId !== null && currentLrclibId !== null) {
+      console.log(`[karaoke] vm:write (nudge) videoId=${currentVideoId} lrclibId=${currentLrclibId}`);
       void chrome.storage.local.set({
         [`vm:${currentVideoId}`]: { lrclibId: currentLrclibId, offsetSec: currentOffsetSec },
       });
@@ -198,6 +214,7 @@ async function activate(videoId: string): Promise<void> {
     // Write VideoMeta synchronously here so any subsequent nudge overwrites it
     // rather than racing with the background PICK_CANDIDATE storage write.
     if (currentVideoId !== null) {
+      console.log(`[karaoke] vm:write (pick) videoId=${currentVideoId} lrclibId=${record.id}`);
       void chrome.storage.local.set({
         [`vm:${currentVideoId}`]: { lrclibId: record.id, offsetSec: 0 },
       });
@@ -270,6 +287,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     if (gen !== generation || !panel) return;
 
     if (!response.ok) {
+      console.warn(`[karaoke] load failed for "${song.rawTitle}": ${response.reason} — ${response.message}`);
       disposeAll();
       panel.setStatus(response.message);
       panel.setLines([]);
@@ -277,11 +295,27 @@ async function load(videoId: string, gen: number): Promise<void> {
       return;
     }
 
+    console.log(
+      `[karaoke] load OK "${response.record.trackName} / ${response.record.artistName}"`,
+      `lrclibId=${response.lrclibId} offsetSec=${response.offsetSec}`,
+      `durationSec=${song.durationSec ?? 'null'}`,
+    );
+
     const { record } = response;
     // Preserve any live nudge already applied this session; only take the stored
     // offset on the first load for this video (currentLrclibId was null before).
     if (currentLrclibId === null) currentOffsetSec = response.offsetSec;
     currentLrclibId = response.lrclibId;
+
+    // Write VideoMeta HERE (not in the background) so that only the authoritative
+    // response — the one that passed the generation check — persists to storage.
+    console.log(
+      `[karaoke] vm:write videoId=${videoId} lrclibId=${response.lrclibId}`,
+      `gen=${gen} currentVideoId=${currentVideoId}`,
+    );
+    void chrome.storage.local.set({
+      [`vm:${videoId}`]: { lrclibId: response.lrclibId, offsetSec: currentOffsetSec },
+    });
     currentRecord = response.record;
     panel.setHeader(record.trackName, record.artistName);
 

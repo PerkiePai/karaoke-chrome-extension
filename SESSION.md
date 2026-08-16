@@ -1,6 +1,6 @@
 # Session state — YouTube Karaoke Lyrics extension
 
-Last updated: 2026-08-16 (session 4)
+Last updated: 2026-08-16 (session 5)
 
 ## What this is
 
@@ -26,7 +26,7 @@ Latin-token query strategy.
 | 2 — song detection, lyrics rendered (static) | done, browser-verified |
 | 2.5 — matching + staleness fixes | done, browser-verified |
 | 3 — rAF sync engine, scrolling karaoke | done, browser-verified |
-| 4 — offset nudge, manual search, caching | done, needs browser-verify |
+| 4 — offset nudge, manual search, caching | done, browser-verified |
 | 5 — category gate, error states, polish | not started |
 
 ## Documents
@@ -238,6 +238,34 @@ Five bugs found and fixed during 2.5/3 verification:
 
 Background originally wrote `writeVideoMeta({offsetSec: 0})` ~50-200ms after pick. If the user nudged in that window, the background write would overwrite their nudge. Fix: background PICK_CANDIDATE only caches lyrics; content script writes VideoMeta synchronously at pick time before any await, so any subsequent nudge write always races against a newer timestamp and wins (last-write-wins, same `chrome.storage.local` key).
 
+## Session 5 — cache correctness fixes
+
+Four bugs diagnosed and fixed via console logging in Opera GX.
+
+### 1. Search UI disabled
+
+All `showCorrectBar(true)` calls removed from the content script. The "Not this one?" button, search form, and candidate list are permanently hidden. Code is intact for future re-enable. Reason: the search feature had multiple edge-case bugs (stale panel contamination, missing `exitSearchMode` on crash) that were not worth fixing before core caching worked.
+
+### 2. Cache hit validation (`handle-fetch-lyrics.ts`)
+
+Cache-hit path previously returned the stored lrclibId unconditionally. If a previous wrong match had been written, it was served forever. Fix: re-score the cached record against the current request's readings using `scoreCandidates`. If none pass `MATCH_THRESHOLD` + `MIN_TRACK_SIMILARITY` + `MIN_ARTIST_SIMILARITY`, fall through to a fresh search. The fresh search uses an improved `offsetSec` rule: preserve the stored offset only when the fresh search returns the SAME lrclibId (cache eviction case); reset to 0 when a different lrclibId is found (stale match case).
+
+### 3. `writeVideoMeta` moved to content script
+
+`handleFetchLyrics` in the background was writing `vm:${videoId}` after every search. Console logs revealed two concurrent `FETCH_LYRICS` messages for the same videoId arriving at the background before either had written storage — the slower one would overwrite with its result even though the content script had already discarded that response via the generation check. Fix: removed `writeVideoMeta` from `handleFetchLyrics`; the content script now writes `vm:${videoId}` inside `load()` **after** the generation check passes. Background still writes `lc:${lrclibId}` (the lyrics record itself), which is idempotent and safe.
+
+### 4. Stale title in `waitForSong` (root cause of cache corruption)
+
+Console logs showed every navigation writing the PREVIOUS video's title under the NEW video's ID — e.g. `vm:AllFallsDown_vid → lrclibId of "More Than You Know"`. Root cause: YouTube updates the `<video>` element (duration) before updating the page heading. `waitForSong` returned immediately when `durationSec !== null`, which could mean new duration + stale title. Fix: require `rawTitle` to be identical across two consecutive polls (200ms apart) before returning. Adds ≤200ms per navigation; guarantees no stale title is committed.
+
+### Debug logging added
+
+Both the service worker and content script now emit `[karaoke]`-prefixed logs (cache HIT/REJECTED/MISS with videoId and score; `vm:write` with videoId, lrclibId, gen, and currentVideoId) to make future regressions diagnosable without a debugger.
+
+### Test changes
+
+- `handleFetchLyrics — cache behavior`: "writes video meta and lyrics cache" updated to assert that VideoMeta is now **absent** after the background call (responsibility moved to content script). "Returns from cache on repeat visit" updated to manually write VideoMeta between calls, simulating what the content script would do. New test: "rejects a stale cache entry and re-searches when the record no longer matches".
+
 ## Known debt (accumulated)
 
 - **"First open" bug**: on the very first video after opening YouTube, the lyrics panel sometimes does not appear. The DOM-disconnection fix in `reconcile()` did not resolve it. Workaround: navigate to any other video and back, or reload the tab.
@@ -249,8 +277,8 @@ Background originally wrote `writeVideoMeta({offsetSec: 0})` ~50-200ms after pic
 
 ## Next actions
 
-1. Browser-verify Sprint 4 features in Opera GX.
-2. **Sprint 5** — category gate, error states, polish.
-3. Decide on Musixmatch fallback based on Thai hit rate.
-4. Decide on dochord based on hit rate (chord source, not lyrics sync).
-5. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
+1. **Sprint 5** — category gate, error states, polish.
+2. Decide on Musixmatch fallback based on Thai hit rate.
+3. Decide on dochord based on hit rate (chord source, not lyrics sync).
+4. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
+5. Close the remaining double-call race: a `reload` can fire in the 200ms window between `mountPanel` returning and `load()` setting `isLoading = true`, sending two `FETCH_LYRICS` messages for the same videoId. Benign with current fixes (both find same result) but wastes a network round-trip.
