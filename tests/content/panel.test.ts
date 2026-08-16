@@ -21,9 +21,10 @@ describe('mountPanel', () => {
   let host: HTMLElement;
   beforeEach(() => {
     host = container();
-    // jsdom does not implement scrollIntoView (real Chromium always does);
-    // setActiveLine's autoScroll path calls it directly, so tests supply it.
+    // jsdom does not implement scrollIntoView or scrollTo on elements;
+    // setActiveLine uses scrollTo on the lyrics container, so tests supply it.
     Element.prototype.scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollTo = vi.fn() as typeof HTMLElement.prototype.scrollTo;
   });
 
   it('attaches a host element with an open shadow root', () => {
@@ -122,20 +123,20 @@ describe('mountPanel', () => {
       expect(items[1]!.classList.contains('kx-line-active')).toBe(false);
     });
 
-    it('scrolls the active line into view when autoScroll is true', () => {
+    it('scrolls the lyrics container (not the page) when autoScroll is true', () => {
       const panel = mountPanel(host);
       panel.setLines(lines('a', 'b'));
       panel.setActiveLine(1, true);
-      const items = shadowOf(host).querySelectorAll('.kx-line');
-      expect(items[1]!.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+      const linesContainer = shadowOf(host).querySelector<HTMLElement>('.kx-lines')!;
+      expect(linesContainer.scrollTo).toHaveBeenCalledWith({ top: expect.any(Number), behavior: 'smooth' });
     });
 
     it('does not scroll when autoScroll is false', () => {
       const panel = mountPanel(host);
       panel.setLines(lines('a', 'b'));
       panel.setActiveLine(1, false);
-      const items = shadowOf(host).querySelectorAll('.kx-line');
-      expect(items[1]!.scrollIntoView).not.toHaveBeenCalled();
+      const linesContainer = shadowOf(host).querySelector<HTMLElement>('.kx-lines')!;
+      expect(linesContainer.scrollTo).not.toHaveBeenCalled();
     });
   });
 

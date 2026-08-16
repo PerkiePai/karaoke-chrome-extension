@@ -19,11 +19,10 @@ export const PANEL_STYLES = `
   .kx-lines {
     list-style: none;
     margin: 0;
-    /* Generous top/bottom padding lets scrollIntoView({block:'center'})
-       actually center lines near the start or end of the list, not just
-       ones in the middle — the scroll container needs room to move past
-       its own content bounds. A vh unit keeps this sized to the viewport
-       instead of the (much narrower) container width. */
+    /* Generous top/bottom padding so lines near the start or end of the
+       list can be scrolled to the center of the container — without it,
+       scrollTo clamps and the first/last lines are off-center. vh keeps
+       this proportional to the viewport, not the narrow container width. */
     padding: 30vh 0;
     overflow-y: auto;
     scroll-behavior: smooth;

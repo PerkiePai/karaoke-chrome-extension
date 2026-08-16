@@ -134,13 +134,25 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       );
     },
     setActiveLine(index, autoScroll) {
-      const items = find<HTMLElement>('.kx-lines').children;
+      const items = linesEl.children;
       for (let i = 0; i < items.length; i++) {
         items[i]!.classList.toggle('kx-line-active', i === index);
       }
       if (index !== null && autoScroll) {
         const active = items[index] as HTMLElement | undefined;
-        active?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (active) {
+          // Scroll only the lyrics list, not the page. scrollIntoView() walks
+          // all ancestor scroll containers (including YouTube's page scroll),
+          // causing the page to jump back up after the suspension window ends.
+          const containerRect = linesEl.getBoundingClientRect();
+          const activeRect = active.getBoundingClientRect();
+          const targetScroll =
+            linesEl.scrollTop +
+            (activeRect.top - containerRect.top) -
+            linesEl.clientHeight / 2 +
+            active.clientHeight / 2;
+          linesEl.scrollTo({ top: targetScroll, behavior: 'smooth' });
+        }
       }
     },
     onManualScroll(callback) {
