@@ -1,6 +1,6 @@
 # Session state — YouTube Karaoke Lyrics extension
 
-Last updated: 2026-08-16
+Last updated: 2026-08-16 (session 4)
 
 ## What this is
 
@@ -24,9 +24,9 @@ Latin-token query strategy.
 |---|---|
 | 1 — loads, panel mounts, SPA lifecycle | done, browser-verified |
 | 2 — song detection, lyrics rendered (static) | done, browser-verified |
-| 2.5 — matching + staleness fixes | **done, NOT yet browser-verified** |
-| 3 — rAF sync engine, scrolling karaoke | not started |
-| 4 — offset nudge, manual search, caching | not started |
+| 2.5 — matching + staleness fixes | done, browser-verified |
+| 3 — rAF sync engine, scrolling karaoke | done, browser-verified |
+| 4 — offset nudge, manual search, caching | done, needs browser-verify |
 | 5 — category gate, error states, polish | not started |
 
 ## Documents
@@ -149,36 +149,108 @@ convenient stand-in for it.
   `pickBestScored`, still a tested public function). Scores can exceed 1.0
   (cosmetic). The `isNonIdentifying` artist-name-collision edge case above.
 
+## Lyrics API research (session 2)
+
+Playlist is ~70% Thai, ~30% English. Researched in this session.
+
+| Source | Thai lyrics | Synced LRC | Notes |
+|---|---|---|---|
+| **lrclib.net** | Partial | ✅ Yes | Free, no key, no rate limit; `lrclib-api` npm package |
+| **Musixmatch (unofficial)** | ✅ Good | ✅ Yes | `musicxmatch-api` / `Strvm/musicxmatch-api` on GitHub |
+| **dochord.com** | ✅ Full | ❌ Plain only | Scrape in extension context (bypasses 403); no API |
+| Genius | Some | ❌ Plain only | Free API; unsynced only |
+
+**Recommended strategy:**
+1. Primary: lrclib.net (zero friction, LRC output, TypeScript-native)
+2. Fallback for Thai gaps: Musixmatch unofficial wrapper
+3. dochord as chord source eventually — not as a sync source
+
 ## Open question: dochord.com
 
-The user asked about fetching from `https://www.dochord.com` (Thai lyrics +
-chords) as a second source. **Parked until the hit rate after Sprint 2.5 is
-known via the manual browser check below** — three of the four originally-Thai
-failures may now be reachable given the query-strategy fix; `คืนจันทร์` looks
-genuinely absent from LRCLIB regardless.
+Investigated in session 2. Summary of findings:
 
-If pursued, note:
-- `robots.txt` allows content pages but **disallows `/?s=`, their search** — the
-  exact path a lookup needs. A sitemap is published, so a robots-compliant route
-  exists (build a title→URL index from the sitemap, fetch only song pages).
-- Cloudflare sits in front; programmatic fetches may be challenged.
-- **No timings** — it cannot drive karaoke scrolling, only static text.
-- It *does* have chords, so it is more interesting as the eventual chord source
-  than as a lyrics fallback.
-- Personal use in the user's own browser is defensible; redistributing the
-  content in a published extension is not. Keep it personal-use.
-- Adding it is a design change (source interface, precedence, per-source
-  capabilities) and needs its own spec, not a task bolted onto an existing plan.
+- URL pattern: `https://www.dochord.com/{numeric_id}/` for songs, `/artist/{slug}/` for artist pages
+- Confirmed coverage: PHUMIN `นายหญิง` → `/368717/`; Tattoo Colour → `/artist/tattoo-colour/`; likely most Thai playlist artists
+- Returns 403 to server-side fetchers (Cloudflare) but **Chrome extension fetch works** (real browser session)
+- No official API, no LRC/timestamps — chords + plain text lyrics only
+- **No timings** — cannot drive karaoke scrolling, only static text display
+- It *does* have chords, so it is more interesting as the eventual chord source (long-term goal) than as a lyrics fallback
+- Adding it is a design change (source interface, precedence, per-source capabilities) — needs its own spec
+
+**Parked** — pursue after confirming lrclib + Musixmatch hit rate against real playlist.
+
+## Sprint 3 — what shipped
+
+Five commits on top of Sprint 2.5 (base `dad17b4` → fix-wave → `0a97e95`):
+
+- `0cf999e` — pure sync engine (`findActiveLineIndex` binary search, `tick`, `notifyManualScroll`, 4 s scroll suspension)
+- `bcdc61e` — sync loop wires `video` events to engine via rAF; paused = zero CPU; `seeked` fires one immediate apply
+- `ec8d979` — sync loop integrated into content script lifecycle via disposer registry
+- `a557081` — fix: stop leaked sync loop when same-video reload comes back not-ok
+- `0a97e95` — fix: initial highlight on paused load; empty-list padding regression
+
+### How timestamp sync works (from session 2 review)
+1. **`parseLrc()`** (`src/core/lrc-parser.ts`) — parses `[mm:ss.xx] text` → `LyricLine[]` sorted by `timeMs`
+2. **`findActiveLineIndex()`** (`src/content/sync-engine.ts:22`) — binary search: last line where `timeMs ≤ currentTimeMs`
+3. **`startSyncLoop()`** (`src/content/sync-loop.ts`) — playing → rAF chain; paused → cancelled; `seeked` → one apply; only calls `setActiveLine` when index changes
+4. Scroll suspension: `autoScroll` suppressed 4 s after manual scroll (`SCROLL_SUSPEND_MS = 4000`)
+
+**The extension does not generate timestamps.** It relies entirely on pre-timed LRC from lrclib.net. Plain-text sources (dochord, Genius) give static display only.
+
+## Session 3 — fixes applied during browser verification
+
+Five bugs found and fixed during 2.5/3 verification:
+
+- **All 5 Thai songs returning no lyrics** — root causes: bare digits from channel names
+  (e.g. "Phumin อัลบั้ม 2") poisoning queries; 20-result cap on prolific artists;
+  "Session" not in VARIANT_WORDS. Fix: rewrote `buildSearchQuery` to include Thai text
+  from predominantly-Thai fields, always filter non-identifying Latin (digits + variant
+  words), added `'session'` to VARIANT_WORDS. All 5 Thai songs now find lyrics.
+- **"Love To Death - English" returning no lyrics** — YouTube title was
+  "Mother Mother - Love To Death - English"; the "- English" suffix included in
+  the track name broke the lrclib query. Fix: added a BARE_NOISE pattern in
+  `title-normalizer.ts` that strips trailing single-word language qualifiers
+  (english/thai/japanese/…) after a separator.
+- **Panel disconnects on first video** — attempted fix (detect host element
+  removed from DOM, reset state). Did NOT resolve the issue. Parked as known debt.
+  Root cause unknown; likely YouTube's initial render replacing `#secondary` before
+  the panel mounts, or `yt-navigate-finish` not firing for the very first navigation.
+
+194 tests pass after this session's work (was 192 before).
+
+
+## Sprint 4 — what shipped
+
+229 tests, typecheck and build clean. 6 commits on top of Sprint 3 (base `0a97e95`):
+
+- `e2f1072` + `df5c404` — `src/background/storage.ts`: `StorageLike` interface, `VideoMeta`, read/write helpers for per-video meta and LRC lyrics cache with LRU eviction (max 50 entries, `lc:order` key). Critical fix: `lc:order` read uses `Array.isArray` guard, not a blind cast.
+- `20be09c` — `handle-fetch-lyrics`: cache-hit path (VideoMeta → lyrics cache → return with stored offset); miss path writes both caches; offset preserved across same-video reloads.
+- `bc14859` — `handle-search-candidates`: passes query verbatim to search, filters `hasUsableLyrics`, caps at 10 results.
+- `50279c6` — panel: offset controls UI (◀/▶ nudge buttons, formatted `±N.NNs` display), "Not this one?" correct-bar, search form, candidate list. Sync loop gains `setOffsetMs()`.
+- `600a6e9` — panel styles: `.kx-hidden`, offset/search/candidate CSS.
+- Content script (`src/content/index.ts`) integrated all four features:
+  - Offset nudge: `onOffsetNudge` clamped ±30s, writes `vm:${videoId}` directly to `chrome.storage.local`, updates sync loop immediately.
+  - Manual search: `onCorrectRequest` pre-fills from `currentRecord`; `onSearch` sends `SEARCH_CANDIDATES` with double-submit guard; `onCandidatePick` replaces lyrics, resets offset, writes `vm:${videoId}` synchronously (race-free — background no longer writes VideoMeta on PICK_CANDIDATE).
+  - Stored offset only applied on session-first load (`if (currentLrclibId === null)`), not on title-triggered reloads.
+  - "Not this one?" bar now shown in the `!response.ok` branch too, so users who get "No lyrics found" can still trigger manual search.
+
+### Key design decision: PICK_CANDIDATE race fix
+
+Background originally wrote `writeVideoMeta({offsetSec: 0})` ~50-200ms after pick. If the user nudged in that window, the background write would overwrite their nudge. Fix: background PICK_CANDIDATE only caches lyrics; content script writes VideoMeta synchronously at pick time before any await, so any subsequent nudge write always races against a newer timestamp and wins (last-write-wins, same `chrome.storage.local` key).
+
+## Known debt (accumulated)
+
+- **"First open" bug**: on the very first video after opening YouTube, the lyrics panel sometimes does not appear. The DOM-disconnection fix in `reconcile()` did not resolve it. Workaround: navigate to any other video and back, or reload the tab.
+- Panel seam, teardown pattern, stale duration — see Sprint 2.5 debt section above.
+- `pickBestMatch` unused outside tests.
+- Scores can exceed 1.0 (cosmetic).
+- Artist named `Live`/`Cover`/etc. with Thai-only track → empty query (narrow recall miss).
+- Minor: leftmost-separator splitting means `AC | DC - Song` yields artist "AC".
 
 ## Next actions
 
-1. **Rebuild and reload in Opera GX, then re-run the ten-song check (5 Thai,
-   5 English) against the real browser.** This is Sprint 2.5's one exit
-   criterion that no automated agent can perform — everything else (the
-   matching logic, the live-LRCLIB retrieval behavior, the navigation
-   self-correction unit tests) has been verified, but nobody has clicked
-   through real YouTube videos with this code loaded yet. Record the exact
-   titles of any that still fail — real failing titles are worth more than
-   any invented fixture.
-2. Decide on dochord based on that hit rate.
-3. Then Sprint 3, opening with the panel-seam and teardown refactors above.
+1. Browser-verify Sprint 4 features in Opera GX.
+2. **Sprint 5** — category gate, error states, polish.
+3. Decide on Musixmatch fallback based on Thai hit rate.
+4. Decide on dochord based on hit rate (chord source, not lyrics sync).
+5. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.

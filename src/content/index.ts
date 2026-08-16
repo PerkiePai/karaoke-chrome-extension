@@ -157,6 +157,7 @@ async function activate(videoId: string): Promise<void> {
         });
       } catch {
         panel!.setStatus('Search failed. Is the extension worker running?');
+        panel!.exitSearchMode();
         return;
       }
       if (!resp.ok) {
@@ -188,6 +189,14 @@ async function activate(videoId: string): Promise<void> {
     currentLrclibId = record.id;
     currentRecord = record;
     currentOffsetSec = 0; // reset offset when user manually picks a different song
+
+    // Write VideoMeta synchronously here so any subsequent nudge overwrites it
+    // rather than racing with the background PICK_CANDIDATE storage write.
+    if (currentVideoId !== null) {
+      void chrome.storage.local.set({
+        [`vm:${currentVideoId}`]: { lrclibId: record.id, offsetSec: 0 },
+      });
+    }
 
     if (plan.synced) {
       panel!.setOffsetControls(true, 0);
@@ -260,6 +269,7 @@ async function load(videoId: string, gen: number): Promise<void> {
       panel.setStatus(response.message);
       panel.setLines([]);
       panel.setOffsetControls(false);
+      panel.showCorrectBar(true);
       return;
     }
 

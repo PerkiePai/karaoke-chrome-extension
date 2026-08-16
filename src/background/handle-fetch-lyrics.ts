@@ -23,7 +23,7 @@ export async function handleFetchLyrics(
   search: (query: string) => Promise<LrclibRecord[]>,
   storage?: StorageLike,
 ): Promise<FetchLyricsResponse> {
-  let existingMeta = storage ? await readVideoMeta(storage, request.videoId) : null;
+  const existingMeta = storage ? await readVideoMeta(storage, request.videoId) : null;
 
   if (existingMeta) {
     const cached = await readLyricsCache(storage!, existingMeta.lrclibId);

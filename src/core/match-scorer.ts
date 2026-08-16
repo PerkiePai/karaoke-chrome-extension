@@ -65,7 +65,7 @@ const NEUTRAL = 0.5;
  * copy that drifts out of step with it — see `buildSearchQuery`, which must not
  * treat these as identifying search terms.
  */
-export const VARIANT_WORDS = ['live', 'acoustic', 'cover', 'remix', 'instrumental'] as const;
+export const VARIANT_WORDS = ['live', 'acoustic', 'cover', 'remix', 'instrumental', 'session'] as const;
 
 const VARIANT_PATTERNS = VARIANT_WORDS.map(
   (word) => [word, new RegExp(`\\b${word}\\b`, 'i')] as const,

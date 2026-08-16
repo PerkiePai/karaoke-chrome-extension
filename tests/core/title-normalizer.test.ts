@@ -191,6 +191,23 @@ describe('normalizeTitle', () => {
       track: 'Wonderwall',
     });
   });
+
+  // "Mother Mother - Love To Death - English" — the " - English" suffix is a
+  // language-version tag, not part of the track name. Stripping it lets lrclib
+  // find "Love to Death" by "Mother Mother" (the query "… English" returns 0).
+  it('strips a trailing language-version qualifier after a separator', () => {
+    expect(normalizeTitle('Mother Mother - Love To Death - English')).toEqual({
+      artist: 'Mother Mother',
+      track: 'Love To Death',
+    });
+  });
+
+  it('strips a Japanese language qualifier the same way', () => {
+    expect(normalizeTitle('Artist - Song Title - Japanese')).toEqual({
+      artist: 'Artist',
+      track: 'Song Title',
+    });
+  });
 });
 
 describe('normalizeTitleCandidates', () => {

@@ -46,6 +46,10 @@ const BARE_NOISE = [
   /\bofficial\s+(?:music\s+)?video\b/gi,
   /\bofficial\s+(?:audio|mv)\b/gi,
   /(?:\s+\b(?:hd|4k|1080p|720p)\b)+\s*$/gi,
+  // Language-version qualifiers after a separator — e.g. "Love To Death - English".
+  // A single language word at the tail carries no identifying information and
+  // poisons lrclib queries (q=… English → 0 results).
+  /\s*[-–—|]\s*(?:english|thai|japanese|korean|chinese|spanish|french|german|portuguese|italian|arabic|hindi)\s*$/gi,
 ];
 
 const SEPARATORS = [' - ', ' – ', ' — ', ' | '];
