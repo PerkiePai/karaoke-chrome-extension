@@ -1,5 +1,5 @@
 import { PANEL_STYLES } from './panel-styles';
-import type { LyricLine } from '../core/types';
+import type { LyricLine, LrclibRecord } from '../core/types';
 
 export const PANEL_HOST_ID = 'karaoke-lyrics-panel-host';
 
@@ -19,6 +19,20 @@ export interface PanelHandle {
   setOffsetControls(visible: boolean, offsetSec?: number): void;
   /** Replaces the callback fired when ◀ (delta = -0.25) or ▶ (delta = +0.25) is clicked. */
   onOffsetNudge(callback: (delta: number) => void): void;
+  /** Shows or hides the "Not this one?" button. */
+  showCorrectBar(visible: boolean): void;
+  /** Pre-fills the search input with `query` and shows the search form. Hides any existing candidate list. */
+  enterSearchMode(query: string): void;
+  /** Renders the candidate list and hides the search form. Empty array hides the list. */
+  showCandidates(candidates: LrclibRecord[]): void;
+  /** Hides both the search form and the candidate list. */
+  exitSearchMode(): void;
+  /** Fires when user clicks "Not this one?". */
+  onCorrectRequest(callback: () => void): void;
+  /** Fires when user submits the search form. */
+  onSearch(callback: (query: string) => void): void;
+  /** Fires when user clicks a candidate. */
+  onCandidatePick(callback: (record: LrclibRecord) => void): void;
   destroy(): void;
 }
 
@@ -47,6 +61,14 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       <span class="kx-offset-value">+0.00s</span>
       <button class="kx-offset-fwd" title="Shift lyrics later (+0.25 s)">▶</button>
     </div>
+    <div class="kx-correct-bar kx-hidden">
+      <button class="kx-not-this">Not this one?</button>
+    </div>
+    <form class="kx-search-form kx-hidden" autocomplete="off">
+      <input class="kx-search-input" type="text" placeholder="Artist and song title…">
+      <button type="submit" class="kx-search-btn">Search</button>
+    </form>
+    <ol class="kx-candidates kx-hidden"></ol>
     <div class="kx-status"></div>
     <ol class="kx-lines"></ol>
   `;
@@ -74,6 +96,20 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   });
   find<HTMLElement>('.kx-offset-fwd').addEventListener('click', () => {
     offsetNudgeListener?.(0.25);
+  });
+
+  let correctRequestListener: (() => void) | null = null;
+  let searchListener: ((query: string) => void) | null = null;
+  let candidatePickListener: ((record: LrclibRecord) => void) | null = null;
+
+  find<HTMLElement>('.kx-not-this').addEventListener('click', () => {
+    correctRequestListener?.();
+  });
+
+  find<HTMLFormElement>('.kx-search-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = find<HTMLInputElement>('.kx-search-input').value.trim();
+    if (q) searchListener?.(q);
   });
 
   return {
@@ -120,6 +156,51 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     onOffsetNudge(callback) {
       offsetNudgeListener = callback;
+    },
+    showCorrectBar(visible) {
+      find<HTMLElement>('.kx-correct-bar').classList.toggle('kx-hidden', !visible);
+    },
+    enterSearchMode(query) {
+      find<HTMLInputElement>('.kx-search-input').value = query;
+      find<HTMLElement>('.kx-search-form').classList.remove('kx-hidden');
+      find<HTMLElement>('.kx-candidates').classList.add('kx-hidden');
+    },
+    showCandidates(candidates) {
+      const listEl = find<HTMLElement>('.kx-candidates');
+      if (candidates.length === 0) {
+        listEl.classList.add('kx-hidden');
+        return;
+      }
+      listEl.replaceChildren(
+        ...candidates.map((record) => {
+          const li = document.createElement('li');
+          li.className = 'kx-candidate';
+          const title = document.createElement('span');
+          title.className = 'kx-candidate-title';
+          title.textContent = record.trackName;
+          const sub = document.createElement('span');
+          sub.className = 'kx-candidate-sub';
+          sub.textContent = record.artistName;
+          li.append(title, sub);
+          li.addEventListener('click', () => candidatePickListener?.(record));
+          return li;
+        }),
+      );
+      listEl.classList.remove('kx-hidden');
+      find<HTMLElement>('.kx-search-form').classList.add('kx-hidden');
+    },
+    exitSearchMode() {
+      find<HTMLElement>('.kx-search-form').classList.add('kx-hidden');
+      find<HTMLElement>('.kx-candidates').classList.add('kx-hidden');
+    },
+    onCorrectRequest(callback) {
+      correctRequestListener = callback;
+    },
+    onSearch(callback) {
+      searchListener = callback;
+    },
+    onCandidatePick(callback) {
+      candidatePickListener = callback;
     },
     destroy() {
       host.remove();

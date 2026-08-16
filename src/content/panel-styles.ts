@@ -70,4 +70,63 @@ export const PANEL_STYLES = `
   }
   .kx-offset button:hover { color: #fff; border-color: #aaa; }
   .kx-offset-value { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+  .kx-correct-bar {
+    padding: 4px 0;
+    border-bottom: 1px solid #303030;
+  }
+  .kx-not-this {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+  }
+  .kx-not-this:hover { color: #aaa; }
+  .kx-search-form {
+    display: flex;
+    gap: 6px;
+    padding: 6px 0;
+    border-bottom: 1px solid #303030;
+  }
+  .kx-search-input {
+    flex: 1;
+    background: #1a1a1a;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #f1f1f1;
+    font-size: 12px;
+    padding: 3px 6px;
+    outline: none;
+  }
+  .kx-search-input:focus { border-color: #888; }
+  .kx-search-btn {
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #f1f1f1;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+  .kx-search-btn:hover { background: #444; }
+  .kx-candidates {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+    max-height: 160px;
+    overflow-y: auto;
+    border-bottom: 1px solid #303030;
+  }
+  .kx-candidate {
+    cursor: pointer;
+    padding: 4px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .kx-candidate:hover { background: #1a1a1a; }
+  .kx-candidate-title { font-size: 13px; color: #f1f1f1; }
+  .kx-candidate-sub { font-size: 11px; color: #888; }
 `;

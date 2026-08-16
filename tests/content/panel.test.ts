@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mountPanel, PANEL_HOST_ID } from '../../src/content/panel';
-import type { LyricLine } from '../../src/core/types';
+import type { LyricLine, LrclibRecord } from '../../src/core/types';
 
 function container(): HTMLElement {
   document.body.innerHTML = '<div id="secondary"></div>';
@@ -224,6 +224,78 @@ describe('mountPanel', () => {
       shadowOf(host).querySelector<HTMLElement>('.kx-offset-back')!.click();
       expect(first).not.toHaveBeenCalled();
       expect(second).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('search UI', () => {
+    it('hides the correct-bar, search form, and candidate list by default', () => {
+      mountPanel(host);
+      const shadow = shadowOf(host);
+      expect(shadow.querySelector<HTMLElement>('.kx-correct-bar')!.classList.contains('kx-hidden')).toBe(true);
+      expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(true);
+      expect(shadow.querySelector<HTMLElement>('.kx-candidates')!.classList.contains('kx-hidden')).toBe(true);
+    });
+
+    it('showCorrectBar(true) reveals the "Not this one?" button', () => {
+      const panel = mountPanel(host);
+      panel.showCorrectBar(true);
+      expect(shadowOf(host).querySelector<HTMLElement>('.kx-correct-bar')!.classList.contains('kx-hidden')).toBe(false);
+    });
+
+    it('onCorrectRequest fires when "Not this one?" is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onCorrectRequest(cb);
+      panel.showCorrectBar(true);
+      shadowOf(host).querySelector<HTMLElement>('.kx-not-this')!.click();
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('enterSearchMode pre-fills the input and shows the form', () => {
+      const panel = mountPanel(host);
+      panel.enterSearchMode('Wonderwall Oasis');
+      const shadow = shadowOf(host);
+      expect(shadow.querySelector<HTMLInputElement>('.kx-search-input')!.value).toBe('Wonderwall Oasis');
+      expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(false);
+    });
+
+    it('onSearch fires with the trimmed query when the form is submitted', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onSearch(cb);
+      panel.enterSearchMode('Wonderwall');
+      const form = shadowOf(host).querySelector<HTMLFormElement>('.kx-search-form')!;
+      form.dispatchEvent(new Event('submit', { bubbles: true }));
+      expect(cb).toHaveBeenCalledWith('Wonderwall');
+    });
+
+    it('showCandidates renders one list item per record', () => {
+      const panel = mountPanel(host);
+      const records: LrclibRecord[] = [
+        { id: 1, trackName: 'Wonderwall', artistName: 'Oasis', albumName: null, duration: 258, instrumental: false, plainLyrics: null, syncedLyrics: '[00:01.00]x' },
+        { id: 2, trackName: 'Champagne Supernova', artistName: 'Oasis', albumName: null, duration: 400, instrumental: false, plainLyrics: null, syncedLyrics: '[00:01.00]x' },
+      ];
+      panel.showCandidates(records);
+      expect(shadowOf(host).querySelectorAll('.kx-candidate')).toHaveLength(2);
+    });
+
+    it('onCandidatePick fires with the record when a candidate is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onCandidatePick(cb);
+      const record: LrclibRecord = { id: 1, trackName: 'Wonderwall', artistName: 'Oasis', albumName: null, duration: 258, instrumental: false, plainLyrics: null, syncedLyrics: '[00:01.00]x' };
+      panel.showCandidates([record]);
+      shadowOf(host).querySelector<HTMLElement>('.kx-candidate')!.click();
+      expect(cb).toHaveBeenCalledWith(record);
+    });
+
+    it('exitSearchMode hides both the form and the candidate list', () => {
+      const panel = mountPanel(host);
+      panel.enterSearchMode('test');
+      panel.exitSearchMode();
+      const shadow = shadowOf(host);
+      expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(true);
+      expect(shadow.querySelector<HTMLElement>('.kx-candidates')!.classList.contains('kx-hidden')).toBe(true);
     });
   });
 });

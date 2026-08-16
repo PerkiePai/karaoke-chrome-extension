@@ -18,6 +18,13 @@ function mockPanel(): PanelHandle {
     onManualScroll: vi.fn(),
     setOffsetControls: vi.fn(),
     onOffsetNudge: vi.fn(),
+    showCorrectBar: vi.fn(),
+    enterSearchMode: vi.fn(),
+    showCandidates: vi.fn(),
+    exitSearchMode: vi.fn(),
+    onCorrectRequest: vi.fn(),
+    onSearch: vi.fn(),
+    onCandidatePick: vi.fn(),
     destroy: vi.fn(),
   };
 }

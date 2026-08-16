@@ -5,7 +5,14 @@ import { planRender } from './render-plan';
 import { startSyncLoop, type SyncLoopHandle } from './sync-loop';
 import { parseVideoId } from '../core/youtube-url';
 import { normalizeTitleCandidates } from '../core/title-normalizer';
-import type { FetchLyricsRequest, FetchLyricsResponse } from '../messaging/types';
+import type {
+  FetchLyricsRequest,
+  FetchLyricsResponse,
+  SearchCandidatesRequest,
+  SearchCandidatesResponse,
+  PickCandidateRequest,
+  PickCandidateResponse,
+} from '../messaging/types';
 
 const SECONDARY_SELECTOR = '#secondary';
 const SECONDARY_POLL_MS = 200;
@@ -27,6 +34,8 @@ let generation = 0;
 
 /** lrclibId of the record currently displayed; null while no lyrics are shown. */
 let currentLrclibId: number | null = null;
+/** The LrclibRecord currently shown; null while no lyrics are loaded. */
+let currentRecord: import('../core/types').LrclibRecord | null = null;
 /** Offset applied to the sync engine for the current video, in seconds. */
 let currentOffsetSec = 0;
 /** The running sync loop handle, so the nudge callback can update its offset. */
@@ -58,6 +67,7 @@ function teardown(): void {
   panel = null;
   renderedTitle = null;
   currentLrclibId = null;
+  currentRecord = null;
   currentOffsetSec = 0;
   currentSyncLoop = null;
   isLoading = false;
@@ -124,6 +134,75 @@ async function activate(videoId: string): Promise<void> {
     }
   });
 
+  panel.onCorrectRequest(() => {
+    // Pre-fill with the currently displayed track + artist, if we have them.
+    const prefilledQuery =
+      currentRecord !== null
+        ? [currentRecord.trackName, currentRecord.artistName].filter(Boolean).join(' ')
+        : '';
+    panel!.enterSearchMode(prefilledQuery);
+  });
+
+  panel.onSearch(async (query) => {
+    panel!.setStatus('Searching…');
+    let resp: SearchCandidatesResponse;
+    try {
+      resp = await chrome.runtime.sendMessage<SearchCandidatesRequest, SearchCandidatesResponse>({
+        type: 'SEARCH_CANDIDATES',
+        query,
+      });
+    } catch {
+      panel!.setStatus('Search failed. Is the extension worker running?');
+      return;
+    }
+    if (!resp.ok) {
+      panel!.setStatus(resp.message);
+      panel!.exitSearchMode();
+      return;
+    }
+    if (resp.candidates.length === 0) {
+      panel!.setStatus('No results found. Try different keywords.');
+      return;
+    }
+    panel!.setStatus('');
+    panel!.showCandidates(resp.candidates);
+  });
+
+  panel.onCandidatePick((record) => {
+    panel!.exitSearchMode();
+    panel!.showCorrectBar(true);
+    panel!.setHeader(record.trackName, record.artistName);
+
+    const plan = planRender(record);
+    disposeAll();
+    panel!.setStatus(plan.status);
+    panel!.setLines(plan.lines);
+
+    currentLrclibId = record.id;
+    currentRecord = record;
+    currentOffsetSec = 0; // reset offset when user manually picks a different song
+
+    if (plan.synced) {
+      panel!.setOffsetControls(true, 0);
+      const video = document.querySelector('video');
+      if (video) {
+        const loop = startSyncLoop(video, panel!, plan.lines, 0);
+        currentSyncLoop = loop;
+        addDisposer(() => { loop.stop(); currentSyncLoop = null; });
+      }
+    } else {
+      panel!.setOffsetControls(false);
+    }
+
+    if (currentVideoId !== null) {
+      void chrome.runtime.sendMessage<PickCandidateRequest, PickCandidateResponse>({
+        type: 'PICK_CANDIDATE',
+        videoId: currentVideoId,
+        record,
+      });
+    }
+  });
+
   await load(videoId, gen);
 }
 
@@ -182,6 +261,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     // offset on the first load for this video (currentLrclibId was null before).
     if (currentLrclibId === null) currentOffsetSec = response.offsetSec;
     currentLrclibId = response.lrclibId;
+    currentRecord = response.record;
     panel.setHeader(record.trackName, record.artistName);
 
     const plan = planRender(record);
@@ -191,6 +271,8 @@ async function load(videoId: string, gen: number): Promise<void> {
     disposeAll();
     panel.setStatus(plan.status);
     panel.setLines(plan.lines);
+
+    panel.showCorrectBar(true);
 
     if (plan.synced) {
       const video = document.querySelector('video');
