@@ -22,14 +22,14 @@ export interface ParsedTitle {
  * survives this.
  */
 const DUPLICATED_ACROSS_BRACKETS =
-  /(\S+(?:\s+\S+){0,3})(\s*(?:【[^】]*】|\[[^\]]*\]|\([^)]*\)))\s*\1\s*$/i;
+  /(\S+(?:\s+\S+){0,3})(\s*(?:【[^】]*】|「[^」]*」|\[[^\]]*\]|\([^)]*\)))\s*\1\s*$/i;
 
 // Bracketed promo tags. Note the absence of live/acoustic/cover/remix:
 // the match scorer relies on those surviving.
 const BRACKETED_NOISE =
   /[([]\s*[^)\]]*\b(?:official|lyrics?|audio|m\/?v|visualizer|teaser|hd|4k|\d{3,4}p)\b[^)\]]*\s*[)\]]/gi;
 
-const CJK_BRACKETED_NOISE = /【[^】]*】/g;
+const CJK_BRACKETED_NOISE = /(?:【[^】]*】|「[^」]*」)/g;
 
 // Featured-artist credits come in two shapes and must be handled separately.
 // A bracketed credit may safely run to its closing bracket. A BARE credit has no

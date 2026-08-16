@@ -6,7 +6,10 @@ export const PANEL_HOST_ID = 'karaoke-lyrics-panel-host';
 export interface PanelHandle {
   setHeader(title: string, subtitle: string): void;
   setStatus(message: string): void;
-  setLines(lines: LyricLine[]): void;
+  /** `synced=false` (the default is true) renders every line in the same
+   *  bold/white style as an active line — used for plain-text lyrics that
+   *  have no timestamps to highlight against. */
+  setLines(lines: LyricLine[], synced?: boolean): void;
   /** Highlights the line at `index` (null clears highlighting). Scrolls it
    * into view, centered, only when `autoScroll` is true. */
   setActiveLine(index: number | null, autoScroll: boolean): void;
@@ -122,12 +125,12 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       el.textContent = message;
       el.style.display = message ? 'block' : 'none';
     },
-    setLines(lines) {
+    setLines(lines, synced = true) {
       // textContent per line: lyrics are untrusted third-party content.
       find('.kx-lines').replaceChildren(
         ...lines.map((line) => {
           const li = document.createElement('li');
-          li.className = 'kx-line';
+          li.className = synced ? 'kx-line' : 'kx-line kx-line-active';
           li.textContent = line.text;
           return li;
         }),

@@ -79,25 +79,39 @@ function isPredominantlyThai(text: string): boolean {
  * "ความเชื่อ (Live)" (60 %) while excluding "Phumin อัลบั้ม 2" (50 %) and
  * "Live Session วสันต์17" (28 %).
  *
+ * Latin tokens are extracted PER FIELD, and a field's own tokens are skipped
+ * once that field is classified as predominantly Thai. Thai celebrities are
+ * routinely credited with a mixed field like "Atom ชนกันต์" — a romanized
+ * nickname glued to a Thai surname — where LRCLIB's record only stores the
+ * all-Thai form ("อะตอม ชนกันต์"). Carrying "Atom" into the query as a
+ * mandatory token used to zero out the result set even though the Thai text
+ * alone finds the song: `q=ชนกันต์ PLEASE Atom` returns 0 results, `q=ชนกันต์
+ * PLEASE` returns the exact match. A field that is NOT predominantly Thai
+ * (e.g. "LOSO") still contributes its Latin tokens as before, since there the
+ * Latin form is the artist's actual stage name, not a duplicate of the Thai.
+ *
  * The result is ordering-independent: `buildSearchQuery('LOSO', 'คืนจันทร์')`
  * and `buildSearchQuery('คืนจันทร์', 'LOSO')` both return `'คืนจันทร์ LOSO'`,
  * so both orderings of a title share one request.
  */
 export function buildSearchQuery(artist: string | null, track: string): string {
-  const source = `${artist ?? ''} ${track}`;
-  const latin = source.match(LATIN_RUN);
-  const identifyingLatin = latin?.filter((t) => !isNonIdentifying(t));
-
-  // Collect meaningful Thai text from any predominantly-Thai field.
   const thaiParts: string[] = [];
+  const identifyingLatin: string[] = [];
+
   for (const field of [artist ?? '', track]) {
-    if (!isPredominantlyThai(field)) continue;
-    const t = extractThaiText(field);
-    if (t) thaiParts.push(t);
+    if (isPredominantlyThai(field)) {
+      const t = extractThaiText(field);
+      if (t) thaiParts.push(t);
+      continue;
+    }
+    const latin = field.match(LATIN_RUN) ?? [];
+    for (const token of latin) {
+      if (!isNonIdentifying(token)) identifyingLatin.push(token);
+    }
   }
   const thaiText = thaiParts.join(' ');
 
-  if (identifyingLatin?.length) {
+  if (identifyingLatin.length) {
     return thaiText
       ? `${thaiText} ${identifyingLatin.join(' ')}`
       : identifyingLatin.join(' ');
@@ -106,5 +120,6 @@ export function buildSearchQuery(artist: string | null, track: string): string {
   // No identifying Latin — Thai text alone is the best retrieval key available.
   if (thaiText) return thaiText;
 
+  const source = `${artist ?? ''} ${track}`;
   return source.trim().replace(/\s+/g, ' ');
 }

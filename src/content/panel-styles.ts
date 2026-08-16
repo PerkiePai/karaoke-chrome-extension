@@ -11,6 +11,11 @@ export const PANEL_STYLES = `
     max-height: 60vh;
     display: flex;
     flex-direction: column;
+    /* Belt-and-braces: .kx-lines has a fixed height below, so nothing should
+       need to spill past this box — but if it ever does (long header/status
+       text, a narrow #secondary), clip it instead of letting it render past
+       the rounded border. */
+    overflow: hidden;
   }
   .kx-header { border-bottom: 1px solid #303030; padding-bottom: 8px; }
   .kx-title { font-size: 15px; font-weight: 600; }
@@ -19,11 +24,15 @@ export const PANEL_STYLES = `
   .kx-lines {
     list-style: none;
     margin: 0;
-    /* Generous top/bottom padding so lines near the start or end of the
-       list can be scrolled to the center of the container — without it,
-       scrollTo clamps and the first/last lines are off-center. vh keeps
-       this proportional to the viewport, not the narrow container width. */
-    padding: 30vh 0;
+    /* Fixed to roughly 5 lines' worth of height (~40px/line at the default
+       15px/1.9 sizing) so the window stays compact instead of growing with
+       the whole song. flex: none so the flex column never stretches or
+       shrinks it. Top/bottom padding is half that height so the first/last
+       lines can still be scrolled up to the vertical center — without it,
+       scrollTo clamps and they're stuck off-center. */
+    height: 200px;
+    padding: 100px 0;
+    flex: none;
     overflow-y: auto;
     scroll-behavior: smooth;
     font-size: 14px;
@@ -32,6 +41,7 @@ export const PANEL_STYLES = `
     mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
   }
   .kx-lines:empty {
+    height: 0;
     padding: 0;
   }
   .kx-line {

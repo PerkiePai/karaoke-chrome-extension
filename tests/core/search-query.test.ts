@@ -115,4 +115,15 @@ describe('buildSearchQuery', () => {
   it('filters a bare digit alongside an identifying token', () => {
     expect(buildSearchQuery('บอดี้สแลม', 'Yes 2')).toBe('บอดี้สแลม Yes');
   });
+
+  // "Atom ชนกันต์" is a mixed field: a romanized nickname glued to a Thai
+  // surname. LRCLIB stores only the all-Thai form ("อะตอม ชนกันต์"), so
+  // carrying "Atom" into the query zeroes the result set even though the Thai
+  // text alone finds it: q=ชนกันต์ PLEASE Atom -> 0 results, q=ชนกันต์ PLEASE
+  // -> the exact match. The field is >50% Thai, so its Latin fragment is
+  // dropped in favor of the Thai text.
+  it('drops a Latin nickname embedded in a predominantly-Thai artist field', () => {
+    expect(buildSearchQuery('Atom ชนกันต์', 'PLEASE')).toBe('ชนกันต์ PLEASE');
+    expect(buildSearchQuery('PLEASE', 'Atom ชนกันต์')).toBe('ชนกันต์ PLEASE');
+  });
 });

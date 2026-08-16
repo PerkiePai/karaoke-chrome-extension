@@ -14,7 +14,13 @@ import type {
   PickCandidateResponse,
 } from '../messaging/types';
 
-const SECONDARY_SELECTOR = '#secondary';
+// Scoped to ytd-watch-flexy: YouTube's home/browse page (ytd-browse) also has
+// an element with id="secondary", and keeps it cached in the DOM (display:
+// none) after navigating away rather than removing it. On the very first
+// navigation from youtube.com to a watch page, that stale hidden element can
+// sit earlier in the document than the real one, so a bare '#secondary'
+// query silently mounts the panel into an invisible, orphaned container.
+const SECONDARY_SELECTOR = 'ytd-watch-flexy #secondary';
 const SECONDARY_POLL_MS = 200;
 const SECONDARY_TIMEOUT_MS = 10_000;
 const NAVIGATION_POLL_MS = 1000;
@@ -78,7 +84,11 @@ async function waitForSecondary(): Promise<HTMLElement | null> {
   const deadline = Date.now() + SECONDARY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const el = document.querySelector<HTMLElement>(SECONDARY_SELECTOR);
-    if (el) return el;
+    // Belt-and-braces against the same class of bug recurring: a matched
+    // element whose ancestor chain is display:none (e.g. a cached, inactive
+    // page component) has no offsetParent even though it's connected to the
+    // document, so querySelector alone can't tell it apart from a live one.
+    if (el && el.offsetParent !== null) return el;
     await delay(SECONDARY_POLL_MS);
   }
   return null;
@@ -205,7 +215,7 @@ async function activate(videoId: string): Promise<void> {
     const plan = planRender(record);
     disposeAll();
     panel!.setStatus(plan.status);
-    panel!.setLines(plan.lines);
+    panel!.setLines(plan.lines, plan.synced);
 
     currentLrclibId = record.id;
     currentRecord = record;
@@ -325,7 +335,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     // replace — stop it exactly when the content it drove stops being shown.
     disposeAll();
     panel.setStatus(plan.status);
-    panel.setLines(plan.lines);
+    panel.setLines(plan.lines, plan.synced);
 
     if (plan.synced) {
       const video = document.querySelector('video');

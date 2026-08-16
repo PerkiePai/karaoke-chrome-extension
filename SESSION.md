@@ -1,6 +1,6 @@
 # Session state — YouTube Karaoke Lyrics extension
 
-Last updated: 2026-08-16 (session 5)
+Last updated: 2026-08-16 (session 7)
 
 ## What this is
 
@@ -266,9 +266,58 @@ Both the service worker and content script now emit `[karaoke]`-prefixed logs (c
 
 - `handleFetchLyrics — cache behavior`: "writes video meta and lyrics cache" updated to assert that VideoMeta is now **absent** after the background call (responsibility moved to content script). "Returns from cache on repeat visit" updated to manually write VideoMeta between calls, simulating what the content script would do. New test: "rejects a stale cache entry and re-searches when the record no longer matches".
 
+## Session 7 — panel window/overflow fix, static-lyric styling; feature ideas parked for Sprint 5 planning
+
+Treated as small, contained bug fixes (not sprint-planned): shipped directly on top of session 6's uncommitted `waitForSecondary` fix.
+
+### What shipped
+
+- **Lyric window is now a fixed ~5-line height, not a 60vh mask.** `.kx-lines` (`panel-styles.ts`) changed from unconstrained-growth-plus-mask to `height: 200px` (`flex: none` so the flex column can't stretch it), with `padding: 100px 0` (half its height) replacing the old `30vh 0` so the first/last lines can still scroll to the vertical center. `:empty` now also zeroes `height`, not just `padding`, so the loading/error states don't leave a blank 200px box.
+- **Overflow bug fixed**: `.kx-panel` had `max-height: 60vh` but no `overflow` set (default `visible`), and `.kx-lines` was a flex child with no fixed height — a classic flexbox bug where the child won't shrink below its content size, so content (offset buttons, lyric lines) could render past the panel's rounded border instead of being clipped. Fix: `.kx-lines` now has an explicit height (above), and `.kx-panel` got `overflow: hidden` as a belt-and-braces clip.
+- **Unsynced (no-timestamp) lyrics now render in the same bold/white style as an active synced line**, instead of sitting permanently dimmed with no highlight (the sync loop never runs for `plan.synced === false`, so `setActiveLine` was never called and every line stayed at the default dim style). `PanelHandle.setLines()` gained an optional second param, `synced = true`; `panel.ts` applies `kx-line-active` to every `<li>` up front when `synced === false`. Both call sites in `content/index.ts` (`load()` and `onCandidatePick`) now pass `plan.synced` through.
+
+232 tests pass (2 new, in `tests/content/panel.test.ts`), typecheck and build clean. **Not yet browser-verified** — reload at `opera://extensions` to check the new window size/centering and the static-lyric styling for real.
+
+### Feature ideas discussed, deliberately NOT implemented — plan for Sprint 5
+
+- **Dual sync modes**: auto-sync (current, timestamp-driven) by default; a second auto-scroll mode with adjustable speed for lyrics with no timestamps (currently `plan.synced === false` just renders static text, no scrolling at all — `sync-loop.ts` is 100% timestamp-driven, no fallback path exists).
+- **Tap-to-sync offset**: replace/augment the ◀▶ 0.25s-step nudge (clamped ±30s) with a "sync here" button — user clicks it when vocals start, extension reads `video.currentTime` at that instant and computes `offset = clickTimeMs - firstLyricLine.timeMs`. Motivating case: some MVs have a cold-open/intro >20s before the song starts, making the fixed-step nudge impractical (dozens of clicks). Keep the ◀▶ buttons for fine-tuning after the tap.
+- **Rate adjustment (0.95x/1.05x) — explicitly parked, not recommended yet**: would turn the offset from a constant additive shift into a linear time-warp (`adjustedTime = (t - anchor) * rate + anchorLine`), needing a second persisted value per video. Only implement if a real song is found where a single constant offset doesn't hold across the whole track (expected drift cause is edit-length mismatch, not tempo mismatch — tap-to-sync alone should cover the common case).
+
+## Session 8 — feature idea discussed: channel name + YouTube "Music" attribution box as additional signals
+
+User asked why detection doesn't use the channel name as artist, or the licensed-music attribution info YouTube shows for some videos (the "Music in this video" panel / auto-generated `Provided to YouTube by … \n\nTitle · Artist \nAlbum …` description). Not implemented yet — discussed only. Two separate ideas with different risk profiles:
+
+- **Channel name as artist**: reliable for official artist/VEVO channels, but wrong for karaoke channels, compilation channels ("NoCopyrightSounds", "1theK"), label channels, and cover channels — anywhere the channel isn't the performer. Recommendation: use it as a **fallback only**, when `normalizeTitle` returns `artist: null` (no separator found in the title) — today that case just sends the bare track to search. Small, low-risk addition to `title-normalizer.ts` / `content/index.ts`.
+- **YouTube "Music" attribution box**: when present, this is authoritative label metadata (same data Content ID uses), not a guess — worth treating as a high-confidence override that skips scoring entirely.
+
+Suggested order: channel-name fallback first, then the Music panel as a second detection signal. Related to the already-parked **music.youtube.com DOM extractor** idea in Next actions #4 — same underlying theme (read structured metadata instead of parsing raw title text) but for the main youtube.com watch page rather than music.youtube.com.
+
+### Verified: the Music attribution data is embedded JSON, not something you click to render
+
+Follow-up question was whether we could script "click expand, read it, click collapse" to get the Music panel. Checked by fetching a real watch page's raw HTML directly (`curl` a known video with licensed music, `https://www.youtube.com/watch?v=dQw4w9WgXcQ` — Rick Astley) and inspecting the embedded `var ytInitialData = {...}` script blob. No browser/JS execution involved — plain HTTP GET.
+
+**Finding: the data is already present in the page source on load, fully structured, no click needed.**
+
+Path inside `ytInitialData`:
+`engagementPanels[].engagementPanelSectionListRenderer` (where `panelIdentifier == "engagement-panel-structured-description"`) → `.content.structuredDescriptionContentRenderer.items[]` → `.horizontalCardListRenderer.cards[].videoAttributeViewModel`, which has clean fields — not text to regex-parse:
+
+```json
+"videoAttributeViewModel": {
+  "title": "Never Gonna Give You Up (7\" Mix)",
+  "subtitle": "Rick Astley",
+  "secondarySubtitle": { "content": "Whenever You Need Somebody" }
+}
+```
+`title` = song, `subtitle` = artist, `secondarySubtitle.content` = album. (There's also a per-card `confirmDialogEndpoint.dialogMessages` with localized "Song/Artist/Album/Writers" labels — skip that, it's locale-dependent display text; the `videoAttributeViewModel` fields above are the stable structured source.)
+
+**Implication for implementation**: no expand/collapse UI automation needed — that would only be for the human eye, since the panel is inert UI over data that's already there. The one real complication: `window.ytInitialData` only reflects the page's *initial* load, and this extension's content script runs through YouTube's SPA navigation (no full reload between videos) — so the global won't update per-video, and a content script can't read the page's `window.ytInitialData` directly anyway (it's set in the page's main JS world, isolated from the content script's world). Workaround: on each video navigation, `fetch('https://www.youtube.com/watch?v=' + videoId)` for the current video specifically (same technique as the curl test above, run from the extension), regex out the `ytInitialData` blob from the response text, and `JSON.parse` it. No DOM timing, no isolated-world problem, no visible flash to the user. Still just a bonus signal — most videos won't have this panel at all (no recognized licensed music), so title parsing stays the primary path.
+
+Not yet implemented — this is confirmed feasibility + the concrete extraction path, still needs a plan before building (new module, e.g. `music-attribution.ts`, feeding into `song-detector.ts`).
+
 ## Known debt (accumulated)
 
-- **"First open" bug**: on the very first video after opening YouTube, the lyrics panel sometimes does not appear. The DOM-disconnection fix in `reconcile()` did not resolve it. Workaround: navigate to any other video and back, or reload the tab.
+- ~~**"First open" bug**~~ — **fixed, session 6.** Root cause found via live DOM inspection in Opera GX: `waitForSecondary()` queried bare `#secondary`, but YouTube's home/browse page (`ytd-browse`) has its own `#secondary` element that YouTube leaves cached in the DOM (`display:none`) after navigating away instead of removing it. On the very first navigation from `youtube.com` to a watch page, that stale hidden element sits earlier in the DOM than the real one inside `ytd-watch-flexy`, so the panel silently mounted into an invisible, orphaned container (lyrics still fetched fine — that's why logs looked normal). Fix: scoped the selector to `ytd-watch-flexy #secondary` and added an `offsetParent !== null` visibility check in `waitForSecondary()` so a matched-but-hidden container is rejected and polling continues.
 - Panel seam, teardown pattern, stale duration — see Sprint 2.5 debt section above.
 - `pickBestMatch` unused outside tests.
 - Scores can exceed 1.0 (cosmetic).
@@ -277,8 +326,9 @@ Both the service worker and content script now emit `[karaoke]`-prefixed logs (c
 
 ## Next actions
 
-1. **Sprint 5** — category gate, error states, polish.
+1. **Sprint 5** — category gate, error states, polish, plus the dual sync-mode / tap-to-sync feature ideas parked in the Session 7 section above (user wants to write the plan later, not yet).
 2. Decide on Musixmatch fallback based on Thai hit rate.
 3. Decide on dochord based on hit rate (chord source, not lyrics sync).
 4. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
 5. Close the remaining double-call race: a `reload` can fire in the 200ms window between `mountPanel` returning and `load()` setting `isLoading = true`, sending two `FETCH_LYRICS` messages for the same videoId. Benign with current fixes (both find same result) but wastes a network round-trip.
+6. Browser-verify the Session 7 panel changes (5-line window centering, overflow clip, static-lyric styling) in Opera GX — not yet done.

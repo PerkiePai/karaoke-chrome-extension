@@ -40,6 +40,22 @@ describe('mountPanel', () => {
     expect(shadowOf(host).querySelectorAll('.kx-line')).toHaveLength(3);
   });
 
+  it('defaults to the dimmed style, requiring setActiveLine to highlight a line', () => {
+    const panel = mountPanel(host);
+    panel.setLines(lines('a', 'b'));
+    const items = shadowOf(host).querySelectorAll('.kx-line');
+    expect(items[0]!.classList.contains('kx-line-active')).toBe(false);
+    expect(items[1]!.classList.contains('kx-line-active')).toBe(false);
+  });
+
+  it('renders every line pre-highlighted when synced=false (no timestamps to sync against)', () => {
+    const panel = mountPanel(host);
+    panel.setLines(lines('a', 'b'), false);
+    const items = shadowOf(host).querySelectorAll('.kx-line');
+    expect(items[0]!.classList.contains('kx-line-active')).toBe(true);
+    expect(items[1]!.classList.contains('kx-line-active')).toBe(true);
+  });
+
   it('renders lyric text literally, never as markup', () => {
     // Lyrics come from a third-party API, so they are untrusted input.
     const panel = mountPanel(host);

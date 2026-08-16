@@ -208,6 +208,13 @@ describe('normalizeTitle', () => {
       track: 'Song Title',
     });
   });
+
+  it('drops a corner-bracketed promo tag, not just lenticular brackets', () => {
+    expect(normalizeTitle('เธอ - COCKTAIL「Official MV (Cut Version)」')).toEqual({
+      artist: 'เธอ',
+      track: 'COCKTAIL',
+    });
+  });
 });
 
 describe('normalizeTitleCandidates', () => {
