@@ -143,29 +143,36 @@ async function activate(videoId: string): Promise<void> {
     panel!.enterSearchMode(prefilledQuery);
   });
 
+  let searchInFlight = false;
   panel.onSearch(async (query) => {
+    if (searchInFlight) return;
+    searchInFlight = true;
     panel!.setStatus('Searching…');
-    let resp: SearchCandidatesResponse;
     try {
-      resp = await chrome.runtime.sendMessage<SearchCandidatesRequest, SearchCandidatesResponse>({
-        type: 'SEARCH_CANDIDATES',
-        query,
-      });
-    } catch {
-      panel!.setStatus('Search failed. Is the extension worker running?');
-      return;
+      let resp: SearchCandidatesResponse;
+      try {
+        resp = await chrome.runtime.sendMessage<SearchCandidatesRequest, SearchCandidatesResponse>({
+          type: 'SEARCH_CANDIDATES',
+          query,
+        });
+      } catch {
+        panel!.setStatus('Search failed. Is the extension worker running?');
+        return;
+      }
+      if (!resp.ok) {
+        panel!.setStatus(resp.message);
+        panel!.exitSearchMode();
+        return;
+      }
+      if (resp.candidates.length === 0) {
+        panel!.setStatus('No results found. Try different keywords.');
+        return;
+      }
+      panel!.setStatus('');
+      panel!.showCandidates(resp.candidates);
+    } finally {
+      searchInFlight = false;
     }
-    if (!resp.ok) {
-      panel!.setStatus(resp.message);
-      panel!.exitSearchMode();
-      return;
-    }
-    if (resp.candidates.length === 0) {
-      panel!.setStatus('No results found. Try different keywords.');
-      return;
-    }
-    panel!.setStatus('');
-    panel!.showCandidates(resp.candidates);
   });
 
   panel.onCandidatePick((record) => {

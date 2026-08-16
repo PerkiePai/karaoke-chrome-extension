@@ -251,12 +251,13 @@ describe('mountPanel', () => {
       expect(cb).toHaveBeenCalledTimes(1);
     });
 
-    it('enterSearchMode pre-fills the input and shows the form', () => {
+    it('enterSearchMode pre-fills the input, shows the form, and hides the candidate list', () => {
       const panel = mountPanel(host);
       panel.enterSearchMode('Wonderwall Oasis');
       const shadow = shadowOf(host);
       expect(shadow.querySelector<HTMLInputElement>('.kx-search-input')!.value).toBe('Wonderwall Oasis');
       expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(false);
+      expect(shadow.querySelector<HTMLElement>('.kx-candidates')!.classList.contains('kx-hidden')).toBe(true);
     });
 
     it('onSearch fires with the trimmed query when the form is submitted', () => {
@@ -269,14 +270,17 @@ describe('mountPanel', () => {
       expect(cb).toHaveBeenCalledWith('Wonderwall');
     });
 
-    it('showCandidates renders one list item per record', () => {
+    it('showCandidates renders one list item per record and hides the search form', () => {
       const panel = mountPanel(host);
+      panel.enterSearchMode('test');
       const records: LrclibRecord[] = [
         { id: 1, trackName: 'Wonderwall', artistName: 'Oasis', albumName: null, duration: 258, instrumental: false, plainLyrics: null, syncedLyrics: '[00:01.00]x' },
         { id: 2, trackName: 'Champagne Supernova', artistName: 'Oasis', albumName: null, duration: 400, instrumental: false, plainLyrics: null, syncedLyrics: '[00:01.00]x' },
       ];
       panel.showCandidates(records);
-      expect(shadowOf(host).querySelectorAll('.kx-candidate')).toHaveLength(2);
+      const shadow = shadowOf(host);
+      expect(shadow.querySelectorAll('.kx-candidate')).toHaveLength(2);
+      expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(true);
     });
 
     it('onCandidatePick fires with the record when a candidate is clicked', () => {
