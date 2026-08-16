@@ -17,9 +17,62 @@ export const PANEL_STYLES = `
        the rounded border. */
     overflow: hidden;
   }
-  .kx-header { border-bottom: 1px solid #303030; padding-bottom: 8px; }
-  .kx-title { font-size: 15px; font-weight: 600; }
+  .kx-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-bottom: 1px solid #303030;
+    padding-bottom: 8px;
+    transition: padding-bottom 0.25s ease, border-bottom-color 0.25s ease;
+  }
+  .kx-panel.kx-collapsed .kx-header {
+    padding-bottom: 0;
+    border-bottom-color: transparent;
+  }
+  .kx-header-main { min-width: 0; flex: 1; }
+  .kx-title, .kx-header-collapsed-label { font-size: 15px; font-weight: 600; }
   .kx-subtitle { font-size: 12px; color: #aaa; margin-top: 2px; }
+  .kx-header-collapsed-label {
+    display: none;
+    min-width: 0;
+    flex: 1;
+  }
+  .kx-panel.kx-collapsed .kx-header-main { display: none; }
+  .kx-panel.kx-collapsed .kx-header-collapsed-label { display: block; }
+  /* CSS-grid accordion trick: animating a fr unit (rather than height/
+     max-height) gives a smooth open/close regardless of the body's actual
+     content height, with no JS measurement needed. kx-body-inner supplies
+     the single grid item; its own overflow:hidden clips it as the row
+     shrinks to 0fr. */
+  .kx-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transition: grid-template-rows 0.3s ease, opacity 0.25s ease;
+  }
+  .kx-body-inner { overflow: hidden; min-height: 0; }
+  .kx-panel.kx-collapsed .kx-body {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  .kx-collapse-btn {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    color: #f1f1f1;
+    fill: currentcolor;
+    cursor: pointer;
+    padding: 5px;
+  }
+  .kx-collapse-btn:hover { background: rgba(255, 255, 255, 0.1); }
+  .kx-collapse-btn svg { display: block; }
   .kx-status { font-size: 12px; color: #ffb86b; padding: 8px 0; }
   .kx-lines {
     list-style: none;
@@ -59,6 +112,8 @@ export const PANEL_STYLES = `
     opacity: 1;
     font-size: 20px;
   }
+  .kx-line-clickable { cursor: pointer; }
+  .kx-line-clickable:hover { color: #ffffff; opacity: 0.85; }
   .kx-hidden { display: none !important; }
   .kx-offset {
     display: flex;

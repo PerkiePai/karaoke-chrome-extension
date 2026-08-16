@@ -328,7 +328,21 @@ Running the plan's own "Sprint 5 acceptance check" in Opera GX (which had not ac
 - **Sweep didn't move at all at normal (1x) speed, only became visible at high video playback rates.** Root cause: a real browser's `scrollTop` is a whole pixel, and at speed 1 a single ~16ms frame advances well under 1px for any song of normal length. The first fix (above) still derived each frame's base from `panel.getScrollTop()`, which silently rounds away that sub-pixel progress every frame — nothing ever accumulated. Fixed by keeping `posPx` as the sole accumulation source (full float precision), only reading the DOM back to detect a genuine manual scroll (>1px jump), never as the routine per-frame base. Covered by a regression test using a mock panel that rounds `scrollTop` to an integer, the class of bug that would have caught this before it shipped.
 - **Added a 5s lead-in/lead-out pad.** Per request, the sweep now holds at the top for the first 5s of playback and reaches the bottom 5s before the video ends, instead of mapping the full `[0, duration]` span onto the list (most tracks have a few seconds of intro/outro with no lyrics on screen yet). Implemented as a time-remapping (`effectiveMs()`) in the loop, not a change to the pure engine functions.
 
-294 → 297 tests across these fixes (net, after several were rewritten rather than just added), typecheck and build clean throughout. Not yet committed as of this write-up — working tree has the Session 9 fixes uncommitted.
+294 → 297 tests across these fixes (net, after several were rewritten rather than just added), typecheck and build clean throughout. Committed as `372f8dc`.
+
+### Session 9 (cont.) — smoother active-lyric highlight
+
+Separate polish pass, same session: the active-line color/opacity/font-size transition felt like a snap rather than a glide, and `scrollTo({behavior: 'smooth'})` has no controllable duration and some browsers silently downgrade it to an instant jump, which read as the active line warping into place. Slowed the CSS transition to 0.4s ease-out and replaced native smooth-scroll with a self-driven rAF scroll animation in `panel.ts`. Committed as `488464a`.
+
+## Session 10 — minimize/expand panel, click-to-seek, end-of-lyrics highlight fix
+
+Three user-requested features/fixes, no formal plan doc (small, independent, bounded changes reviewed and approved in chat as they went):
+
+- **Minimize/expand panel toggle**, styled after YouTube's own collapsible panels. `PanelHandle` gained `setCollapsed`/`onCollapseChange`; the header shows a circular icon button (YouTube's own X-close SVG when expanded, a matching chevron-down SVG when collapsed) that toggles a `kx-collapsed` class. Iterated through a few rounds of feedback: first pass used a text-glyph circle button (rejected — replaced with real SVG icons matching YouTube's spec-icon markup); the collapsed label originally reserved the same height as the title+artist stack, which just left a dead empty gap (rejected — collapsed bar is now a tight single line); added a CSS-grid `1fr↔0fr` accordion transition (a technique that animates to/from a container's natural content height with no JS measurement) so the collapse/expand slides instead of snapping. Collapse state is kept in a module-level variable in `content/index.ts` (deliberately not reset in `teardown()`) and restored into each freshly-mounted panel, so minimizing sticks across same-tab "next video" navigation — but it's in-memory only, not written to `chrome.storage.local`, so a full page reload resets it to expanded.
+- **Click a lyric line to seek the video there.** `PanelHandle.onLineClick` fires with the clicked line's index (only for synced lines — unsynced/plain-text lines carry placeholder `timeMs`, not real timestamps, so they render without the handler or the pointer cursor). Found a real bug while wiring this up: routing the post-seek highlight through the normal `sync-loop` tick logic left it silently un-centered, because `tick()`'s `autoScroll` flag is `false` for 4s after any manual scroll — and you almost always have to scroll the list to find the line you're about to click. Fixed by adding `SyncLoopHandle.centerLine(index)`, which force-highlights and centers the line directly (bypassing both the "index unchanged" no-op and the suspension check) and clears the suspension so normal playback tracking resumes cleanly afterward.
+- **Last lyric line was losing its highlight before the video ended.** Root cause: `parseLrc` doesn't filter blank-text LRC entries, and many LRC files end with a trailing timestamp that has no text (the convention for marking "song ends here"). Once playback passed that marker, `findActiveLineIndex` returned it as the active index — an invisible blank line "active" instead of the real last lyric. Fixed in `sync-engine.ts`: `findActiveLineIndex` now walks back to the nearest non-blank line whenever it lands on a blank entry, so the last real lyric stays highlighted through the outro. This also fixes the same class of bug for blank markers used mid-song to mark instrumental breaks (the last sung line now stays highlighted through the gap instead of going blank).
+
+304 → 315 tests across these three changes, typecheck and build clean throughout.
 
 ## Known debt (accumulated)
 
@@ -341,10 +355,10 @@ Running the plan's own "Sprint 5 acceptance check" in Opera GX (which had not ac
 
 ## Next actions
 
-1. **Commit the Session 9 fixes** (tap-to-sync sign, auto-scroll manual-scroll/pause redesign, sub-pixel accumulation fix, 5s edge pad) — working tree currently has them uncommitted.
-2. Category gate, error states, polish — the scope originally pencilled in for "Sprint 5" before it got reassigned to dual sync mode / detection signals; still not started.
-3. Decide on Musixmatch fallback based on Thai hit rate.
-4. Decide on dochord based on hit rate (chord source, not lyrics sync).
-5. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
-6. Close the remaining double-call race: a `reload` can fire in the 200ms window between `mountPanel` returning and `load()` setting `isLoading = true`, sending two `FETCH_LYRICS` messages for the same videoId. Benign with current fixes (both find same result) but wastes a network round-trip.
-7. Browser-verify the Session 7 panel changes (5-line window centering, overflow clip, static-lyric styling) in Opera GX — not yet done.
+1. Category gate, error states, polish — the scope originally pencilled in for "Sprint 5" before it got reassigned to dual sync mode / detection signals; still not started.
+2. Decide on Musixmatch fallback based on Thai hit rate.
+3. Decide on dochord based on hit rate (chord source, not lyrics sync).
+4. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
+5. Close the remaining double-call race: a `reload` can fire in the 200ms window between `mountPanel` returning and `load()` setting `isLoading = true`, sending two `FETCH_LYRICS` messages for the same videoId. Benign with current fixes (both find same result) but wastes a network round-trip.
+6. Browser-verify the Session 7 panel changes (5-line window centering, overflow clip, static-lyric styling) in Opera GX — not yet done.
+7. Browser-verify the Session 10 changes (minimize/expand toggle and its animation, click-to-seek + centering, end-of-lyrics highlight persistence) in a real browser — built and unit-tested only so far, consistent with this project's running lesson that live testing is what actually catches these bugs.

@@ -8,6 +8,12 @@ export interface SyncLoopHandle {
    *  Triggers an immediate recompute so the panel reflects the change without waiting
    *  for the next animation frame. */
   setOffsetMs(ms: number): void;
+  /** Forces `index` to be highlighted AND scrolled to center, clearing any
+   *  active manual-scroll suspension. Bypasses both of tick()'s guards
+   *  (the "index unchanged" no-op and the suspension-driven autoScroll=false)
+   *  since a clicked line is an explicit jump request, not the passive
+   *  playback tracking those guards exist to protect from. */
+  centerLine(index: number): void;
 }
 
 /**
@@ -71,6 +77,11 @@ export function startSyncLoop(
     setOffsetMs(ms) {
       offsetMs = ms;
       apply();
+    },
+    centerLine(index) {
+      state.lastManualScrollAtMs = null;
+      state.activeIndex = index;
+      panel.setActiveLine(index, true);
     },
   };
 }

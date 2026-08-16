@@ -34,6 +34,11 @@ const SPEED_MIN = 0.3;
 const SPEED_MAX = 3.0;
 
 let panel: PanelHandle | null = null;
+/** Whether the panel is minimized. Deliberately NOT reset in teardown() —
+ *  survives the teardown/activate cycle that runs on every same-tab video
+ *  navigation, so minimizing sticks across "next video" instead of
+ *  reopening every time the panel remounts. */
+let panelCollapsed = false;
 let currentVideoId: string | null = null;
 /** Raw title the displayed lyrics were fetched for; null while nothing is shown. */
 let renderedTitle: string | null = null;
@@ -184,6 +189,10 @@ async function activate(videoId: string): Promise<void> {
   panel = mountPanel(container);
   panel.setHeader('Karaoke Lyrics', 'identifying song…');
   panel.setStatus('Looking up lyrics…');
+  panel.setCollapsed(panelCollapsed);
+  panel.onCollapseChange((collapsed) => {
+    panelCollapsed = collapsed;
+  });
 
   panel.onOffsetNudge((delta) => {
     currentOffsetSec += delta;
@@ -210,6 +219,22 @@ async function activate(videoId: string): Promise<void> {
     if (currentVideoId !== null && currentLrclibId !== null) {
       persistVideoMeta(currentVideoId, currentLrclibId, 'tap-sync');
     }
+  });
+
+  panel.onLineClick((index) => {
+    const line = currentSyncedLines[index];
+    if (!line) return;
+    // Seek to the moment that makes THIS line the active one, honoring the
+    // same offset the sync loop applies (video.currentTime*1000 + offsetMs
+    // == active line's timeMs) — otherwise a clicked line would jump to the
+    // wrong spot whenever the user has nudged/tap-synced the offset.
+    const video = document.querySelector('video');
+    if (video) video.currentTime = Math.max(0, line.timeMs / 1000 - currentOffsetSec);
+    // Force the center, bypassing the manual-scroll suspension: the user
+    // almost always had to scroll the list to find the line they're
+    // clicking, which would otherwise leave the click's highlight in place
+    // without scrolling it into view for the next few seconds.
+    currentSyncLoop?.centerLine(index);
   });
 
   panel.onSpeedNudge((delta) => {

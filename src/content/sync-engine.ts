@@ -18,6 +18,14 @@ export function createSyncEngineState(): SyncEngineState {
  *
  * Binary search over `lines`, which parseLrc guarantees are sorted ascending
  * by timeMs. Finds the last line whose timeMs does not exceed currentTimeMs.
+ *
+ * A blank-text entry (the LRC convention for marking an instrumental gap, or
+ * — most commonly — the song's end) never becomes the active line itself:
+ * once currentTimeMs reaches one, this walks back to the nearest preceding
+ * non-blank line instead, so that line stays highlighted through the gap
+ * rather than the highlight silently going blank. For a trailing marker
+ * (the common case), that non-blank line is the last real lyric, which then
+ * stays active for the rest of the video since nothing later takes over.
  */
 export function findActiveLineIndex(lines: LyricLine[], currentTimeMs: number): number | null {
   if (lines.length === 0 || currentTimeMs < lines[0]!.timeMs) return null;
@@ -29,7 +37,8 @@ export function findActiveLineIndex(lines: LyricLine[], currentTimeMs: number): 
     if (lines[mid]!.timeMs <= currentTimeMs) lo = mid;
     else hi = mid - 1;
   }
-  return lo;
+  while (lo >= 0 && lines[lo]!.text === '') lo -= 1;
+  return lo < 0 ? null : lo;
 }
 
 /** True while auto-scroll should stay suspended after a manual scroll. */

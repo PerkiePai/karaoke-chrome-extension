@@ -3,6 +3,14 @@ import type { LyricLine, LrclibRecord } from '../core/types';
 
 export const PANEL_HOST_ID = 'karaoke-lyrics-panel-host';
 
+// Static, trusted markup (no interpolated values) matching YouTube's own
+// spec-icon SVGs, so the collapse button reads as a native YouTube control
+// rather than a text-glyph circle.
+const ICON_SVG_OPEN =
+  '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24" focusable="false" aria-hidden="true" style="pointer-events: none; display: inherit; width: 100%; height: 100%;"><path d="M17.293 5.293 12 10.586 6.707 5.293a1 1 0 10-1.414 1.414L10.586 12l-5.293 5.293a1 1 0 001.414 1.414L12 13.414l5.293 5.293a1 1 0 001.414-1.414L13.414 12l5.293-5.293a1 1 0 10-1.414-1.414Z"></path></svg>';
+const ICON_SVG_COLLAPSED =
+  '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24" focusable="false" aria-hidden="true" style="pointer-events: none; display: inherit; width: 100%; height: 100%;"><path d="M12 15.05 5.4 8.45l1.4-1.4L12 12.25l5.2-5.2 1.4 1.4Z"></path></svg>';
+
 export interface PanelHandle {
   setHeader(title: string, subtitle: string): void;
   setStatus(message: string): void;
@@ -10,6 +18,11 @@ export interface PanelHandle {
    *  bold/white style as an active line — used for plain-text lyrics that
    *  have no timestamps to highlight against. */
   setLines(lines: LyricLine[], synced?: boolean): void;
+  /** Replaces the callback fired when a line is clicked, with that line's
+   *  index. Only fires for lines rendered with synced=true — unsynced
+   *  (plain-text) lines carry a placeholder timeMs, not a real timestamp,
+   *  so they render without a click handler or pointer cursor. */
+  onLineClick(callback: (index: number) => void): void;
   /** Highlights the line at `index` (null clears highlighting). Scrolls it
    * into view, centered, only when `autoScroll` is true. */
   setActiveLine(index: number | null, autoScroll: boolean): void;
@@ -45,6 +58,13 @@ export interface PanelHandle {
   onScrollPauseToggle(callback: (paused: boolean) => void): void;
   /** Replaces the callback fired when "Sync here" (tap-to-sync) is clicked. */
   onTapSync(callback: () => void): void;
+  /** Sets the minimize/expand state without user interaction — used to
+   *  restore whatever state the panel was in before a same-tab video
+   *  navigation remounted it. Does not fire onCollapseChange. */
+  setCollapsed(collapsed: boolean): void;
+  /** Replaces the callback fired when the user clicks the minimize/expand
+   *  button, with the new collapsed state. */
+  onCollapseChange(callback: (collapsed: boolean) => void): void;
   /** Shows or hides the "Not this one?" button. */
   showCorrectBar(visible: boolean): void;
   /** Pre-fills the search input with `query` and shows the search form. Hides any existing candidate list. */
@@ -79,31 +99,39 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   // Static skeleton only — no interpolated values, so this innerHTML is safe.
   panel.innerHTML = `
     <div class="kx-header">
-      <div class="kx-title"></div>
-      <div class="kx-subtitle"></div>
+      <div class="kx-header-main">
+        <div class="kx-title"></div>
+        <div class="kx-subtitle"></div>
+      </div>
+      <div class="kx-header-collapsed-label">Lyrics</div>
+      <button class="kx-collapse-btn" title="Minimize"></button>
     </div>
-    <div class="kx-offset kx-hidden">
-      <button class="kx-offset-back" title="Shift lyrics earlier (−0.25 s)">◀</button>
-      <span class="kx-offset-value">+0.00s</span>
-      <button class="kx-offset-fwd" title="Shift lyrics later (+0.25 s)">▶</button>
-      <button class="kx-sync-here" title="Set the offset from this moment">Sync here</button>
+    <div class="kx-body">
+      <div class="kx-body-inner">
+        <div class="kx-offset kx-hidden">
+          <button class="kx-offset-back" title="Shift lyrics earlier (−0.25 s)">◀</button>
+          <span class="kx-offset-value">+0.00s</span>
+          <button class="kx-offset-fwd" title="Shift lyrics later (+0.25 s)">▶</button>
+          <button class="kx-sync-here" title="Set the offset from this moment">Sync here</button>
+        </div>
+        <div class="kx-speed kx-hidden">
+          <button class="kx-speed-down" title="Scroll slower">▼</button>
+          <span class="kx-speed-value">1.0x</span>
+          <button class="kx-speed-up" title="Scroll faster">▲</button>
+          <button class="kx-scroll-pause" title="Pause auto-scroll">⏸</button>
+        </div>
+        <div class="kx-correct-bar kx-hidden">
+          <button class="kx-not-this">Not this one?</button>
+        </div>
+        <form class="kx-search-form kx-hidden" autocomplete="off">
+          <input class="kx-search-input" type="text" placeholder="Artist and song title…">
+          <button type="submit" class="kx-search-btn">Search</button>
+        </form>
+        <ol class="kx-candidates kx-hidden"></ol>
+        <div class="kx-status"></div>
+        <ol class="kx-lines"></ol>
+      </div>
     </div>
-    <div class="kx-speed kx-hidden">
-      <button class="kx-speed-down" title="Scroll slower">▼</button>
-      <span class="kx-speed-value">1.0x</span>
-      <button class="kx-speed-up" title="Scroll faster">▲</button>
-      <button class="kx-scroll-pause" title="Pause auto-scroll">⏸</button>
-    </div>
-    <div class="kx-correct-bar kx-hidden">
-      <button class="kx-not-this">Not this one?</button>
-    </div>
-    <form class="kx-search-form kx-hidden" autocomplete="off">
-      <input class="kx-search-input" type="text" placeholder="Artist and song title…">
-      <button type="submit" class="kx-search-btn">Search</button>
-    </form>
-    <ol class="kx-candidates kx-hidden"></ol>
-    <div class="kx-status"></div>
-    <ol class="kx-lines"></ol>
   `;
 
   shadow.append(style, panel);
@@ -145,6 +173,8 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     }
   }
 
+  let lineClickListener: ((index: number) => void) | null = null;
+
   // A single replaceable slot, not an event-target list: only one sync loop
   // drives a panel at a time, so there is nothing to leak across restarts.
   let manualScrollListener: (() => void) | null = null;
@@ -164,6 +194,20 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     { passive: true },
   );
+
+  const collapseBtn = find<HTMLElement>('.kx-collapse-btn');
+  collapseBtn.innerHTML = ICON_SVG_OPEN;
+  let collapseChangeListener: ((collapsed: boolean) => void) | null = null;
+  function applyCollapsed(collapsed: boolean): void {
+    panel.classList.toggle('kx-collapsed', collapsed);
+    collapseBtn.innerHTML = collapsed ? ICON_SVG_COLLAPSED : ICON_SVG_OPEN;
+    collapseBtn.title = collapsed ? 'Expand' : 'Minimize';
+  }
+  collapseBtn.addEventListener('click', () => {
+    const collapsed = !panel.classList.contains('kx-collapsed');
+    applyCollapsed(collapsed);
+    collapseChangeListener?.(collapsed);
+  });
 
   let offsetNudgeListener: ((delta: number) => void) | null = null;
   find<HTMLElement>('.kx-offset-back').addEventListener('click', () => {
@@ -222,13 +266,19 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     setLines(lines, synced = true) {
       // textContent per line: lyrics are untrusted third-party content.
       find('.kx-lines').replaceChildren(
-        ...lines.map((line) => {
+        ...lines.map((line, index) => {
           const li = document.createElement('li');
-          li.className = synced ? 'kx-line' : 'kx-line kx-line-active';
+          li.className = synced ? 'kx-line kx-line-clickable' : 'kx-line kx-line-active';
           li.textContent = line.text;
+          if (synced) {
+            li.addEventListener('click', () => lineClickListener?.(index));
+          }
           return li;
         }),
       );
+    },
+    onLineClick(callback) {
+      lineClickListener = callback;
     },
     setActiveLine(index, autoScroll) {
       const items = linesEl.children;
@@ -294,6 +344,12 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     onTapSync(callback) {
       tapSyncListener = callback;
+    },
+    setCollapsed(collapsed) {
+      applyCollapsed(collapsed);
+    },
+    onCollapseChange(callback) {
+      collapseChangeListener = callback;
     },
     showCorrectBar(visible) {
       find<HTMLElement>('.kx-correct-bar').classList.toggle('kx-hidden', !visible);

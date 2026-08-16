@@ -38,6 +38,42 @@ describe('findActiveLineIndex', () => {
     expect(findActiveLineIndex(LINES, 2500)).toBe(2);
     expect(findActiveLineIndex(LINES, 999_999)).toBe(2);
   });
+
+  describe('blank-text entries (LRC end/instrumental-gap markers)', () => {
+    const WITH_TRAILING_BLANK: LyricLine[] = [
+      { timeMs: 0, text: 'first' },
+      { timeMs: 1000, text: 'second' },
+      { timeMs: 2500, text: '' }, // marks the song's end, no more lyrics
+    ];
+
+    it('keeps the last real line active once time reaches a trailing blank marker', () => {
+      expect(findActiveLineIndex(WITH_TRAILING_BLANK, 2500)).toBe(1);
+    });
+
+    it('keeps the last real line active for the rest of the video past the marker', () => {
+      expect(findActiveLineIndex(WITH_TRAILING_BLANK, 999_999)).toBe(1);
+    });
+
+    const WITH_MID_SONG_GAP: LyricLine[] = [
+      { timeMs: 0, text: 'first' },
+      { timeMs: 1000, text: '' }, // instrumental break
+      { timeMs: 2500, text: 'third' },
+    ];
+
+    it('keeps the preceding non-blank line active through a mid-song instrumental gap', () => {
+      expect(findActiveLineIndex(WITH_MID_SONG_GAP, 1000)).toBe(0);
+      expect(findActiveLineIndex(WITH_MID_SONG_GAP, 2499)).toBe(0);
+    });
+
+    it('advances normally once the next non-blank line is reached', () => {
+      expect(findActiveLineIndex(WITH_MID_SONG_GAP, 2500)).toBe(2);
+    });
+
+    it('returns null when every line up to currentTimeMs is blank', () => {
+      const allBlank: LyricLine[] = [{ timeMs: 0, text: '' }];
+      expect(findActiveLineIndex(allBlank, 5000)).toBeNull();
+    });
+  });
 });
 
 describe('isScrollSuspended', () => {

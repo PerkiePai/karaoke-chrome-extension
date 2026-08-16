@@ -14,6 +14,7 @@ function mockPanel(): PanelHandle {
     setHeader: vi.fn(),
     setStatus: vi.fn(),
     setLines: vi.fn(),
+    onLineClick: vi.fn(),
     setActiveLine: vi.fn(),
     onManualScroll: vi.fn(),
     setOffsetControls: vi.fn(),
@@ -25,6 +26,8 @@ function mockPanel(): PanelHandle {
     onSpeedNudge: vi.fn(),
     onScrollPauseToggle: vi.fn(),
     onTapSync: vi.fn(),
+    setCollapsed: vi.fn(),
+    onCollapseChange: vi.fn(),
     showCorrectBar: vi.fn(),
     enterSearchMode: vi.fn(),
     showCandidates: vi.fn(),
@@ -190,6 +193,44 @@ describe('startSyncLoop', () => {
     startSyncLoop(v, panel, LINES, 700);
     v.dispatchEvent(new Event('seeked'));
     expect(panel.setActiveLine).toHaveBeenCalledWith(1, true);
+  });
+
+  it('centerLine forces a highlight+center call even while auto-scroll is suspended by a recent manual scroll', () => {
+    const v = video();
+    const panel = mockPanel();
+    const handle = startSyncLoop(v, panel, LINES);
+    const manualScrollHandler = (panel.onManualScroll as ReturnType<typeof vi.fn>).mock.calls[0]![0] as () => void;
+    manualScrollHandler(); // suspends auto-scroll
+    vi.clearAllMocks();
+
+    handle.centerLine(1);
+    expect(panel.setActiveLine).toHaveBeenCalledWith(1, true);
+  });
+
+  it('centerLine forces a call even when the index is unchanged from the last applied tick', () => {
+    const v = video();
+    const panel = mockPanel();
+    const handle = startSyncLoop(v, panel, LINES); // initial apply already set active index to 0
+    vi.clearAllMocks();
+
+    handle.centerLine(0);
+    expect(panel.setActiveLine).toHaveBeenCalledWith(0, true);
+  });
+
+  it('centerLine clears the suspension so subsequent playback ticks resume auto-scrolling', () => {
+    const v = video();
+    const panel = mockPanel();
+    const handle = startSyncLoop(v, panel, LINES);
+    const manualScrollHandler = (panel.onManualScroll as ReturnType<typeof vi.fn>).mock.calls[0]![0] as () => void;
+    manualScrollHandler(); // suspends auto-scroll
+
+    handle.centerLine(0);
+    vi.clearAllMocks();
+
+    v.dispatchEvent(new Event('play'));
+    Object.defineProperty(v, 'currentTime', { value: 1.1, configurable: true });
+    raf.runFrame();
+    expect(panel.setActiveLine).toHaveBeenLastCalledWith(1, true);
   });
 
   it('setOffsetMs updates the effective time and triggers an immediate apply', () => {

@@ -141,6 +141,35 @@ describe('mountPanel', () => {
     expect(shadow.querySelector('.kx-subtitle')!.textContent).toBe('Three Man Down');
   });
 
+  describe('onLineClick', () => {
+    it('fires with the index of a clicked synced line', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onLineClick(cb);
+      panel.setLines([{ timeMs: 1000, text: 'a' }, { timeMs: 2500, text: 'b' }], true);
+      shadowOf(host).querySelectorAll<HTMLElement>('.kx-line')[1]!.click();
+      expect(cb).toHaveBeenCalledWith(1);
+    });
+
+    it('marks synced lines with the clickable class', () => {
+      const panel = mountPanel(host);
+      panel.setLines(lines('a', 'b'), true);
+      const li = shadowOf(host).querySelector<HTMLElement>('.kx-line')!;
+      expect(li.classList.contains('kx-line-clickable')).toBe(true);
+    });
+
+    it('does not fire for unsynced (plain-text) lines, and omits the clickable class', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onLineClick(cb);
+      panel.setLines(lines('a', 'b'), false);
+      const li = shadowOf(host).querySelector<HTMLElement>('.kx-line')!;
+      expect(li.classList.contains('kx-line-clickable')).toBe(false);
+      li.click();
+      expect(cb).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setActiveLine', () => {
     it('marks exactly the line at the given index as active', () => {
       const panel = mountPanel(host);
@@ -389,6 +418,69 @@ describe('mountPanel', () => {
       panel.onTapSync(cb);
       shadowOf(host).querySelector<HTMLElement>('.kx-sync-here')!.click();
       expect(cb).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('collapse toggle', () => {
+    it('starts expanded, showing an SVG icon, titled "Minimize"', () => {
+      mountPanel(host);
+      const shadow = shadowOf(host);
+      const btn = shadow.querySelector<HTMLElement>('.kx-collapse-btn')!;
+      expect(shadow.querySelector('.kx-panel')!.classList.contains('kx-collapsed')).toBe(false);
+      expect(btn.title).toBe('Minimize');
+      expect(btn.querySelector('svg')).not.toBeNull();
+    });
+
+    it('collapses on click: adds kx-collapsed and re-titles the button "Expand"', () => {
+      mountPanel(host);
+      const shadow = shadowOf(host);
+      const btn = shadow.querySelector<HTMLElement>('.kx-collapse-btn')!;
+      btn.click();
+      expect(shadow.querySelector('.kx-panel')!.classList.contains('kx-collapsed')).toBe(true);
+      expect(btn.title).toBe('Expand');
+      expect(btn.querySelector('svg')).not.toBeNull();
+    });
+
+    it('expands again on a second click: removes kx-collapsed and re-titles the button "Minimize"', () => {
+      mountPanel(host);
+      const shadow = shadowOf(host);
+      const btn = shadow.querySelector<HTMLElement>('.kx-collapse-btn')!;
+      btn.click();
+      btn.click();
+      expect(shadow.querySelector('.kx-panel')!.classList.contains('kx-collapsed')).toBe(false);
+      expect(btn.title).toBe('Minimize');
+    });
+
+    it('shows the "Lyrics" collapsed label', () => {
+      mountPanel(host);
+      expect(shadowOf(host).querySelector('.kx-header-collapsed-label')!.textContent).toBe('Lyrics');
+    });
+
+    it('setCollapsed(true) applies the collapsed state without a click', () => {
+      const panel = mountPanel(host);
+      panel.setCollapsed(true);
+      const shadow = shadowOf(host);
+      expect(shadow.querySelector('.kx-panel')!.classList.contains('kx-collapsed')).toBe(true);
+      expect(shadow.querySelector<HTMLElement>('.kx-collapse-btn')!.title).toBe('Expand');
+    });
+
+    it('setCollapsed does not fire onCollapseChange', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onCollapseChange(cb);
+      panel.setCollapsed(true);
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('onCollapseChange fires with the new state on click', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onCollapseChange(cb);
+      const btn = shadowOf(host).querySelector<HTMLElement>('.kx-collapse-btn')!;
+      btn.click();
+      expect(cb).toHaveBeenLastCalledWith(true);
+      btn.click();
+      expect(cb).toHaveBeenLastCalledWith(false);
     });
   });
 
