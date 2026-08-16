@@ -147,6 +147,10 @@ async function activate(videoId: string): Promise<void> {
   panel.onSearch(async (query) => {
     if (searchInFlight) return;
     searchInFlight = true;
+    // Snapshot generation before the await so we can detect navigation that
+    // happened while the search was in-flight and avoid writing results onto
+    // the new video's panel.
+    const searchGen = generation;
     panel!.setStatus('Searching…');
     try {
       let resp: SearchCandidatesResponse;
@@ -156,21 +160,23 @@ async function activate(videoId: string): Promise<void> {
           query,
         });
       } catch {
-        panel!.setStatus('Search failed. Is the extension worker running?');
-        panel!.exitSearchMode();
+        if (searchGen !== generation || !panel) return;
+        panel.setStatus('Search failed. Is the extension worker running?');
+        panel.exitSearchMode();
         return;
       }
+      if (searchGen !== generation || !panel) return;
       if (!resp.ok) {
-        panel!.setStatus(resp.message);
-        panel!.exitSearchMode();
+        panel.setStatus(resp.message);
+        panel.exitSearchMode();
         return;
       }
       if (resp.candidates.length === 0) {
-        panel!.setStatus('No results found. Try different keywords.');
+        panel.setStatus('No results found. Try different keywords.');
         return;
       }
-      panel!.setStatus('');
-      panel!.showCandidates(resp.candidates);
+      panel.setStatus('');
+      panel.showCandidates(resp.candidates);
     } finally {
       searchInFlight = false;
     }
