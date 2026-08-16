@@ -16,6 +16,8 @@ function mockPanel(): PanelHandle {
     setLines: vi.fn(),
     setActiveLine: vi.fn(),
     onManualScroll: vi.fn(),
+    setOffsetControls: vi.fn(),
+    onOffsetNudge: vi.fn(),
     destroy: vi.fn(),
   };
 }
@@ -163,5 +165,29 @@ describe('startSyncLoop', () => {
 
     v.dispatchEvent(new Event('play'));
     expect(raf.pendingCount()).toBe(0);
+  });
+
+  it('applies an initial offset: currentTime=0.4s + offset=700ms puts line 1 active', () => {
+    const v = video();
+    const panel = mockPanel();
+    // LINES: line 0 at 0ms, line 1 at 1000ms
+    // effectiveMs = 0.4*1000 + 700 = 1100 → line 1
+    Object.defineProperty(v, 'currentTime', { value: 0.4, configurable: true });
+    startSyncLoop(v, panel, LINES, 700);
+    v.dispatchEvent(new Event('seeked'));
+    expect(panel.setActiveLine).toHaveBeenCalledWith(1, true);
+  });
+
+  it('setOffsetMs updates the effective time and triggers an immediate apply', () => {
+    const v = video();
+    const panel = mockPanel();
+    const handle = startSyncLoop(v, panel, LINES);
+    Object.defineProperty(v, 'currentTime', { value: 0.4, configurable: true });
+    v.dispatchEvent(new Event('seeked'));
+    // Without offset: 400ms → line 0 still active (timeMs[0]=0, timeMs[1]=1000)
+    vi.clearAllMocks();
+    // Now shift by 700ms: 400 + 700 = 1100ms → line 1
+    handle.setOffsetMs(700);
+    expect(panel.setActiveLine).toHaveBeenCalledWith(1, true);
   });
 });

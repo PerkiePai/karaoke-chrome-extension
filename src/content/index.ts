@@ -29,6 +29,8 @@ let generation = 0;
 let currentLrclibId: number | null = null;
 /** Offset applied to the sync engine for the current video, in seconds. */
 let currentOffsetSec = 0;
+/** The running sync loop handle, so the nudge callback can update its offset. */
+let currentSyncLoop: SyncLoopHandle | null = null;
 
 /**
  * Cleanup for resources tied to whatever is currently displayed (today, just
@@ -57,6 +59,7 @@ function teardown(): void {
   renderedTitle = null;
   currentLrclibId = null;
   currentOffsetSec = 0;
+  currentSyncLoop = null;
   isLoading = false;
   generation += 1;
 }
@@ -108,6 +111,19 @@ async function activate(videoId: string): Promise<void> {
   panel.setHeader('Karaoke Lyrics', 'identifying song…');
   panel.setStatus('Looking up lyrics…');
 
+  panel.onOffsetNudge((delta) => {
+    currentOffsetSec += delta;
+    // Clamp to a reasonable range to prevent runaway offsets.
+    currentOffsetSec = Math.max(-30, Math.min(30, currentOffsetSec));
+    currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
+    panel!.setOffsetControls(true, currentOffsetSec);
+    if (currentVideoId !== null && currentLrclibId !== null) {
+      void chrome.storage.local.set({
+        [`vm:${currentVideoId}`]: { lrclibId: currentLrclibId, offsetSec: currentOffsetSec },
+      });
+    }
+  });
+
   await load(videoId, gen);
 }
 
@@ -157,6 +173,7 @@ async function load(videoId: string, gen: number): Promise<void> {
       disposeAll();
       panel.setStatus(response.message);
       panel.setLines([]);
+      panel.setOffsetControls(false);
       return;
     }
 
@@ -176,9 +193,13 @@ async function load(videoId: string, gen: number): Promise<void> {
     if (plan.synced) {
       const video = document.querySelector('video');
       if (video) {
-        const syncLoop: SyncLoopHandle = startSyncLoop(video, panel, plan.lines);
-        addDisposer(syncLoop.stop);
+        const syncLoop = startSyncLoop(video, panel, plan.lines, currentOffsetSec * 1000);
+        currentSyncLoop = syncLoop;
+        addDisposer(() => { syncLoop.stop(); currentSyncLoop = null; });
+        panel.setOffsetControls(true, currentOffsetSec);
       }
+    } else {
+      panel.setOffsetControls(false);
     }
   } finally {
     if (gen === generation) isLoading = false;

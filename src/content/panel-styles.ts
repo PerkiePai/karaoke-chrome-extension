@@ -48,4 +48,26 @@ export const PANEL_STYLES = `
     opacity: 1;
     font-size: 20px;
   }
+  .kx-hidden { display: none !important; }
+  .kx-offset {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0 2px;
+    font-size: 12px;
+    color: #aaa;
+    border-bottom: 1px solid #303030;
+  }
+  .kx-offset button {
+    background: none;
+    border: 1px solid #555;
+    color: #aaa;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 1px 6px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .kx-offset button:hover { color: #fff; border-color: #aaa; }
+  .kx-offset-value { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 `;

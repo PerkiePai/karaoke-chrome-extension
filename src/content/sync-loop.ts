@@ -4,6 +4,10 @@ import { createSyncEngineState, tick, notifyManualScroll } from './sync-engine';
 
 export interface SyncLoopHandle {
   stop(): void;
+  /** Updates the offset applied to video.currentTime before computing the active line.
+   *  Triggers an immediate recompute so the panel reflects the change without waiting
+   *  for the next animation frame. */
+  setOffsetMs(ms: number): void;
 }
 
 /**
@@ -13,12 +17,18 @@ export interface SyncLoopHandle {
  * (a manual scrub, which can happen while paused) forces one recompute even
  * when no rAF chain is running.
  */
-export function startSyncLoop(video: HTMLVideoElement, panel: PanelHandle, lines: LyricLine[]): SyncLoopHandle {
+export function startSyncLoop(
+  video: HTMLVideoElement,
+  panel: PanelHandle,
+  lines: LyricLine[],
+  initialOffsetMs = 0,
+): SyncLoopHandle {
   const state = createSyncEngineState();
+  let offsetMs = initialOffsetMs;
   let rafId: number | null = null;
 
   function apply(): void {
-    const result = tick(state, lines, video.currentTime * 1000, Date.now());
+    const result = tick(state, lines, video.currentTime * 1000 + offsetMs, Date.now());
     if (result) panel.setActiveLine(result.index, result.autoScroll);
   }
 
@@ -57,6 +67,10 @@ export function startSyncLoop(video: HTMLVideoElement, panel: PanelHandle, lines
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('seeked', apply);
       panel.onManualScroll(() => {});
+    },
+    setOffsetMs(ms) {
+      offsetMs = ms;
+      apply();
     },
   };
 }

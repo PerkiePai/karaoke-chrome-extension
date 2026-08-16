@@ -168,4 +168,62 @@ describe('mountPanel', () => {
       expect(second).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('setOffsetControls', () => {
+    it('hides the offset bar by default', () => {
+      mountPanel(host);
+      const el = shadowOf(host).querySelector<HTMLElement>('.kx-offset')!;
+      expect(el.classList.contains('kx-hidden')).toBe(true);
+    });
+
+    it('shows the offset bar with formatted value when visible=true', () => {
+      const panel = mountPanel(host);
+      panel.setOffsetControls(true, 0.5);
+      const el = shadowOf(host).querySelector<HTMLElement>('.kx-offset')!;
+      expect(el.classList.contains('kx-hidden')).toBe(false);
+      expect(shadowOf(host).querySelector('.kx-offset-value')!.textContent).toBe('+0.50s');
+    });
+
+    it('formats a negative offset with a minus sign', () => {
+      const panel = mountPanel(host);
+      panel.setOffsetControls(true, -0.25);
+      expect(shadowOf(host).querySelector('.kx-offset-value')!.textContent).toBe('-0.25s');
+    });
+
+    it('hides the bar again when called with visible=false', () => {
+      const panel = mountPanel(host);
+      panel.setOffsetControls(true, 0);
+      panel.setOffsetControls(false);
+      expect(shadowOf(host).querySelector<HTMLElement>('.kx-offset')!.classList.contains('kx-hidden')).toBe(true);
+    });
+  });
+
+  describe('onOffsetNudge', () => {
+    it('fires the callback with −0.25 when ◀ is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onOffsetNudge(cb);
+      shadowOf(host).querySelector<HTMLElement>('.kx-offset-back')!.click();
+      expect(cb).toHaveBeenCalledWith(-0.25);
+    });
+
+    it('fires the callback with +0.25 when ▶ is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onOffsetNudge(cb);
+      shadowOf(host).querySelector<HTMLElement>('.kx-offset-fwd')!.click();
+      expect(cb).toHaveBeenCalledWith(0.25);
+    });
+
+    it('replaces rather than stacks the callback', () => {
+      const panel = mountPanel(host);
+      const first = vi.fn();
+      const second = vi.fn();
+      panel.onOffsetNudge(first);
+      panel.onOffsetNudge(second);
+      shadowOf(host).querySelector<HTMLElement>('.kx-offset-back')!.click();
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(1);
+    });
+  });
 });

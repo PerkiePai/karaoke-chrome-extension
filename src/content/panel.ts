@@ -14,6 +14,11 @@ export interface PanelHandle {
    * hand (wheel or touch) — not additive, since only one sync loop is ever
    * active for a panel at a time. */
   onManualScroll(callback: () => void): void;
+  /** Shows or hides the ◀ ▶ offset controls and updates the displayed value.
+   *  When visible=false the value argument is ignored. */
+  setOffsetControls(visible: boolean, offsetSec?: number): void;
+  /** Replaces the callback fired when ◀ (delta = -0.25) or ▶ (delta = +0.25) is clicked. */
+  onOffsetNudge(callback: (delta: number) => void): void;
   destroy(): void;
 }
 
@@ -37,6 +42,11 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       <div class="kx-title"></div>
       <div class="kx-subtitle"></div>
     </div>
+    <div class="kx-offset kx-hidden">
+      <button class="kx-offset-back" title="Shift lyrics earlier (−0.25 s)">◀</button>
+      <span class="kx-offset-value">+0.00s</span>
+      <button class="kx-offset-fwd" title="Shift lyrics later (+0.25 s)">▶</button>
+    </div>
     <div class="kx-status"></div>
     <ol class="kx-lines"></ol>
   `;
@@ -57,6 +67,14 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   let manualScrollListener: (() => void) | null = null;
   linesEl.addEventListener('wheel', () => manualScrollListener?.(), { passive: true });
   linesEl.addEventListener('touchmove', () => manualScrollListener?.(), { passive: true });
+
+  let offsetNudgeListener: ((delta: number) => void) | null = null;
+  find<HTMLElement>('.kx-offset-back').addEventListener('click', () => {
+    offsetNudgeListener?.(-0.25);
+  });
+  find<HTMLElement>('.kx-offset-fwd').addEventListener('click', () => {
+    offsetNudgeListener?.(0.25);
+  });
 
   return {
     setHeader(title, subtitle) {
@@ -91,6 +109,17 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     onManualScroll(callback) {
       manualScrollListener = callback;
+    },
+    setOffsetControls(visible, offsetSec) {
+      const el = find<HTMLElement>('.kx-offset');
+      el.classList.toggle('kx-hidden', !visible);
+      if (visible && offsetSec !== undefined) {
+        const sign = offsetSec >= 0 ? '+' : '';
+        find('.kx-offset-value').textContent = `${sign}${offsetSec.toFixed(2)}s`;
+      }
+    },
+    onOffsetNudge(callback) {
+      offsetNudgeListener = callback;
     },
     destroy() {
       host.remove();
