@@ -116,7 +116,7 @@ async function activate(videoId: string): Promise<void> {
     // Clamp to a reasonable range to prevent runaway offsets.
     currentOffsetSec = Math.max(-30, Math.min(30, currentOffsetSec));
     currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
-    panel!.setOffsetControls(true, currentOffsetSec);
+    panel?.setOffsetControls(true, currentOffsetSec);
     if (currentVideoId !== null && currentLrclibId !== null) {
       void chrome.storage.local.set({
         [`vm:${currentVideoId}`]: { lrclibId: currentLrclibId, offsetSec: currentOffsetSec },
@@ -178,8 +178,10 @@ async function load(videoId: string, gen: number): Promise<void> {
     }
 
     const { record } = response;
+    // Preserve any live nudge already applied this session; only take the stored
+    // offset on the first load for this video (currentLrclibId was null before).
+    if (currentLrclibId === null) currentOffsetSec = response.offsetSec;
     currentLrclibId = response.lrclibId;
-    currentOffsetSec = response.offsetSec;
     panel.setHeader(record.trackName, record.artistName);
 
     const plan = planRender(record);
@@ -197,6 +199,8 @@ async function load(videoId: string, gen: number): Promise<void> {
         currentSyncLoop = syncLoop;
         addDisposer(() => { syncLoop.stop(); currentSyncLoop = null; });
         panel.setOffsetControls(true, currentOffsetSec);
+      } else {
+        panel.setOffsetControls(false);
       }
     } else {
       panel.setOffsetControls(false);
