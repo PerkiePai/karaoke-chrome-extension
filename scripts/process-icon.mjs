@@ -93,13 +93,34 @@ for (let sy = 0; sy < cropH; sy++) {
 // The outer corners of the cropped square will still be white (outside the rounded
 // dark square shape). Any pixel that is near-white gets alpha = 0.
 // This is safe because the mic glow is very localised and the edges are dark.
-const CORNER_RADIUS_FRACTION = 0.25; // conservative — only clear near-white pixels
 for (let y = 0; y < side; y++) {
   for (let x = 0; x < side; x++) {
     const i = (y * side + x) * 4;
     const r = square[i], g = square[i + 1], b = square[i + 2];
     if (r > 230 && g > 230 && b > 230) {
       square[i + 3] = 0;
+    }
+  }
+}
+
+// --- Step 4b: push mic body and lyric lines to pure white ---
+// The mic and bright lines are light-grey/off-white in the JPEG. Boost any pixel
+// that is clearly light (not the dark background, not the red note) to 255,255,255
+// so they read as crisp white at all icon sizes.
+// Red detection: R dominant and R > 160 → skip (preserve music note colour).
+for (let y = 0; y < side; y++) {
+  for (let x = 0; x < side; x++) {
+    const i = (y * side + x) * 4;
+    const r = square[i], g = square[i + 1], b = square[i + 2], a = square[i + 3];
+    if (a === 0) continue; // already transparent (outer corners)
+    const isRed = r > 160 && r > g * 1.5 && r > b * 1.5;
+    if (isRed) continue; // keep the red music note as-is
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (luma > 120) {
+      // Bright non-red pixel: force to white
+      square[i]     = 255;
+      square[i + 1] = 255;
+      square[i + 2] = 255;
     }
   }
 }
