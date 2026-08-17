@@ -176,7 +176,7 @@ control. The extension never silently guesses.
   too coarse to feel like karaoke.
 - Binary search into the line array for the current index. **The DOM is
   touched only when that index changes**, never per frame.
-- Auto-scroll keeps the current line centered, but suspends for 4 seconds
+- Auto-scroll keeps the current line centered, but suspends for 3 seconds
   after any manual scroll — otherwise reading ahead is impossible, which
   matters with a guitar in hand.
 - Offset: `effectiveTime = currentTime + offset`. `◀ ▶` adjust in 0.25s steps.

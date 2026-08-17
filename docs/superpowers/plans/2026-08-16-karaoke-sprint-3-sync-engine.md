@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the lyrics panel sync to video playback — the current line highlights and auto-scrolls into view as the song plays, with a Spotify-style look (large bright current line, dimmed surrounding lines, smooth transitions), and manual scrolling suspends auto-scroll for 4 seconds so reading ahead stays possible.
+**Goal:** Make the lyrics panel sync to video playback — the current line highlights and auto-scrolls into view as the song plays, with a Spotify-style look (large bright current line, dimmed surrounding lines, smooth transitions), and manual scrolling suspends auto-scroll for 3 seconds so reading ahead stays possible.
 
 **Architecture:** A pure `sync-engine.ts` holds all the index/timing math (binary search for the active line, scroll-suspension timing) as plain functions over explicit numbers — no clock, no DOM, fully deterministic in tests. An impure `sync-loop.ts` is the only thing that touches a real `<video>` and `requestAnimationFrame`; it is a thin adapter that calls into the pure engine and forwards results to the panel. Two existing files change shape to carry real timestamps end-to-end: `panel.ts`'s `setLines` now takes `LyricLine[]` instead of `string[]` and gains `setActiveLine`/`onManualScroll`, and `render-plan.ts` now says whether its lines are really timed (`synced: boolean`) alongside them. `content/index.ts` gets a small disposer registry so the one stateful resource this sprint adds (the running sync loop) cannot be left running past its video the way an ad-hoc nullable variable could.
 
@@ -21,7 +21,7 @@ Every task's requirements implicitly include this section.
 - Thai text: Unicode NFC where normalized; NEVER fold tone marks. Unaffected by this sprint.
 - TypeScript `strict: true` with `noUncheckedIndexedAccess: true`.
 - `npm test` carries `NODE_OPTIONS=--experimental-require-module` via `cross-env` (Node v22.11.0; jsdom 27 needs `require(esm)`, unflagged only in 22.12.0+). Do not remove it, and never invoke `npx vitest` directly — run `npm test`, or `npm test -- <path>` to scope to one file.
-- **`SCROLL_SUSPEND_MS = 4000`** — the spec's own number ("suspends for 4 seconds after any manual scroll"). This is the one behavioral constant this sprint introduces; do not change it without updating the spec.
+- **`SCROLL_SUSPEND_MS = 3000`** — the spec's own number ("suspends for 3 seconds after any manual scroll"). This is the one behavioral constant this sprint introduces; do not change it without updating the spec.
 - The rAF chain runs only while the video is playing (per spec) — no `requestAnimationFrame` may be scheduled while `<video>` is paused. A `seeked` event still recomputes the active line once even while paused, so scrubbing while paused is not silently ignored.
 - The DOM is touched only when the active index actually changes, never once per frame — this is the reason `sync-engine.tick` returns `null` on an unchanged index rather than always returning a result.
 - Existing tests may be updated only where this plan's interface changes require it — `panel.test.ts`'s `setLines` calls and `render-plan.test.ts`'s `lines` assertions change shape because `PanelHandle.setLines` and `RenderPlan.lines` change type in Tasks 1–2. Never loosen an assertion to hide a bug.
@@ -620,7 +620,7 @@ This is the module the spec means by "the engine consumes a `{ currentTime, paus
 - Consumes: `LyricLine` from `../core/types`.
 - Produces:
   ```ts
-  const SCROLL_SUSPEND_MS: number; // 4000
+  const SCROLL_SUSPEND_MS: number; // 3000
   interface SyncEngineState { activeIndex: number | null; lastManualScrollAtMs: number | null; }
   function createSyncEngineState(): SyncEngineState;
   function findActiveLineIndex(lines: LyricLine[], currentTimeMs: number): number | null;
@@ -746,7 +746,7 @@ Expected: FAIL — cannot resolve `../../src/content/sync-engine`.
 import type { LyricLine } from '../core/types';
 
 /** How long, in ms, auto-scroll stays suspended after a manual scroll. */
-export const SCROLL_SUSPEND_MS = 4000;
+export const SCROLL_SUSPEND_MS = 3000;
 
 export interface SyncEngineState {
   activeIndex: number | null;
@@ -1381,7 +1381,7 @@ Rebuild (`npm run build`) and reload at `opera://extensions` before starting.
    - As playback proceeds, highlighting should move line-by-line at the right moments, and the list should auto-scroll to keep the current line roughly centered, smoothly (not a hard jump).
 2. While it's playing, scroll the lyric list by hand (mouse wheel).
    - Auto-scroll should stop moving the list even as the highlight keeps advancing underneath your scroll position.
-   - After about 4 seconds without touching it again, auto-scroll should resume and snap back to following the current line.
+   - After about 3 seconds without touching it again, auto-scroll should resume and snap back to following the current line.
 3. Pause the video.
    - Highlighting should freeze in place (no more index changes).
    - Open the DevTools Performance tab or just watch CPU: there should be no ongoing `requestAnimationFrame` churn while paused.

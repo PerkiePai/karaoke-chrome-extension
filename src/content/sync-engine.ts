@@ -1,7 +1,7 @@
 import type { LyricLine } from '../core/types';
 
 /** How long, in ms, auto-scroll stays suspended after a manual scroll. */
-export const SCROLL_SUSPEND_MS = 4000;
+export const SCROLL_SUSPEND_MS = 3000;
 
 export interface SyncEngineState {
   activeIndex: number | null;
