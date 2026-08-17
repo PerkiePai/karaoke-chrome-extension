@@ -104,14 +104,40 @@ for (let y = 0; y < side; y++) {
 }
 
 // --- Step 5: resize to each target size and write ---
+// Whiten after resize: at small sizes the mic body pixels average to ~170-220
+// while the surrounding glow averages to ~40-100 — a clean separation that is
+// impossible to achieve at the full 1538px resolution where glow and body blur together.
+function whitenBuffer(buf, w, h) {
+  for (let i = 0; i < buf.length; i += 4) {
+    const r = buf[i], g = buf[i + 1], b = buf[i + 2], a = buf[i + 3];
+    if (a === 0) continue;
+    const isRed = r > 160 && r > g * 1.5 && r > b * 1.5;
+    if (isRed) continue;
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (luma > 80) {
+      buf[i] = 255; buf[i + 1] = 255; buf[i + 2] = 255;
+    }
+  }
+  return buf;
+}
+
 const SIZES = [128, 48, 16];
 
 for (const size of SIZES) {
   const outPath = join(OUT_DIR, `icon${size}.png`);
-  await sharp(square, { raw: { width: side, height: side, channels: 4 } })
+
+  // Resize first, then whiten on the small pixel grid
+  const { data: resized, info: ri } = await sharp(square, { raw: { width: side, height: side, channels: 4 } })
     .resize(size, size, { kernel: 'lanczos3' })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  whitenBuffer(resized, ri.width, ri.height);
+
+  await sharp(resized, { raw: { width: ri.width, height: ri.height, channels: 4 } })
     .png()
     .toFile(outPath);
+
   console.log(`wrote ${outPath}`);
 }
 
