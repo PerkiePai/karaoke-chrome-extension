@@ -92,10 +92,6 @@ export const PANEL_STYLES = `
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
     mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
   }
-  .kx-lines:empty {
-    height: 0;
-    padding: 0;
-  }
   .kx-line {
     color: #a7a7a7;
     padding: 6px 0;

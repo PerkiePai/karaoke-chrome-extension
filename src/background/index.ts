@@ -1,7 +1,7 @@
 import { searchLyrics } from '../lrclib/client';
 import { handleFetchLyrics } from './handle-fetch-lyrics';
 import { handleSearchCandidates } from './handle-search-candidates';
-import { writeLyricsCache, clearNotFoundCache, type StorageLike } from './storage';
+import { writeLyricsCache, clearNotFoundCache, writeUserPicked, type StorageLike } from './storage';
 import type {
   FetchLyricsRequest,
   SearchCandidatesRequest,
@@ -46,6 +46,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void Promise.all([
       writeLyricsCache(storage, req.record.id, req.record),
       clearNotFoundCache(storage, req.videoId),
+      writeUserPicked(storage, req.videoId),
     ]).then(() => {
       sendResponse({ ok: true } satisfies PickCandidateResponse);
     });

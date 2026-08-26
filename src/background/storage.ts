@@ -20,6 +20,7 @@ const LC_PREFIX = 'lc:';
 const LC_ORDER_KEY = 'lc:order';
 const NF_PREFIX = 'nf:';
 const NF_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const UP_PREFIX = 'up:';
 export const LYRICS_CACHE_MAX = 50;
 
 /** Returns true when a valid (non-expired) not-found entry exists for this videoId. */
@@ -44,6 +45,17 @@ export async function writeNotFoundCache(storage: StorageLike, videoId: string):
 
 export async function clearNotFoundCache(storage: StorageLike, videoId: string): Promise<void> {
   await storage.remove([`${NF_PREFIX}${videoId}`]);
+}
+
+/** Returns true when the user has manually picked a song for this video. */
+export async function isUserPicked(storage: StorageLike, videoId: string): Promise<boolean> {
+  const key = `${UP_PREFIX}${videoId}`;
+  const result = await storage.get([key]);
+  return !!result[key];
+}
+
+export async function writeUserPicked(storage: StorageLike, videoId: string): Promise<void> {
+  await storage.set({ [`${UP_PREFIX}${videoId}`]: true });
 }
 
 export async function readVideoMeta(

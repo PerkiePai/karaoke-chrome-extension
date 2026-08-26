@@ -15,6 +15,8 @@ import {
   writeLyricsCache,
   isNotFoundCached,
   writeNotFoundCache,
+  clearNotFoundCache,
+  isUserPicked,
   type StorageLike,
 } from './storage';
 import type { LrclibRecord } from '../core/types';
@@ -35,8 +37,25 @@ export async function handleFetchLyrics(
   const existingMeta = storage ? await readVideoMeta(storage, request.videoId) : null;
 
   if (existingMeta) {
-    const cached = await readLyricsCache(storage!, existingMeta.lrclibId);
+    const [cached, userPicked] = await Promise.all([
+      readLyricsCache(storage!, existingMeta.lrclibId),
+      isUserPicked(storage!, request.videoId),
+    ]);
     if (cached) {
+      if (userPicked) {
+        // User explicitly chose this song — serve it without score re-validation.
+        console.log(
+          `[karaoke] cache HIT (user-picked) videoId=${request.videoId} "${request.track}"`,
+          `lrclibId=${existingMeta.lrclibId} offsetSec=${existingMeta.offsetSec}`,
+        );
+        return {
+          ok: true,
+          record: cached,
+          lrclibId: existingMeta.lrclibId,
+          offsetSec: existingMeta.offsetSec,
+          scrollSpeed: existingMeta.scrollSpeed ?? 1,
+        };
+      }
       // Re-score the cached record against the current song readings before
       // serving it. A record stored under a previous wrong match (or an old
       // scorer run) would otherwise be returned forever — the root cause of
@@ -82,6 +101,10 @@ export async function handleFetchLyrics(
     } else {
       console.log(`[karaoke] cache MISS "${request.track}" (lrclibId=${existingMeta.lrclibId} not in lc: store) → searching`);
     }
+    // If the user previously picked a song for this video but the lyrics were
+    // evicted from the cache, clear the stale not-found entry so a fresh
+    // search can run unobstructed.
+    if (userPicked && storage) await clearNotFoundCache(storage, request.videoId);
   } else {
     console.log(`[karaoke] no VideoMeta for videoId=${request.videoId} → first visit, searching`);
   }
