@@ -1,6 +1,6 @@
 # Session state — YouTube Karaoke Lyrics extension
 
-Last updated: 2026-08-16 (session 9)
+Last updated: 2026-08-27 (session 12)
 
 ## What this is
 
@@ -422,6 +422,28 @@ Asked whether `get-artist-title` and this extension's approach could become a pa
 - `get-artist-title`: MIT license, confirmed from its repo — free for commercial/SaaS use, only needs the copyright notice kept somewhere.
 - LRCLIB (server + API): MIT-licensed server, docs state no API key/registration required and no explicit commercial-use restriction — but it's a volunteer-run free service with no SLA, a business-continuity risk for anything built to scale on it.
 - **The real risk is neither of those**: LRCLIB's lyrics are user-submitted with no licensing deal with music publishers/songwriters — LRCLIB doesn't hold rights to the lyrics text any more than this extension would. A free personal-use extension pulling from that free community database is low-risk; a **paid product** built on the same unlicensed lyrics content is a materially different exposure. Flagged as a real legal question needing an actual lawyer, not resolved here — nothing implemented or decided.
+
+## Session 12 — research: alternative title-extraction methods (no code changes)
+
+User asked for a broader survey of ways to get artist/track from a YouTube video, beyond what's implemented. Pure research, nothing built or decided.
+
+### Other extraction methods surveyed
+
+- **"Provided to YouTube by" description parsing** — the most promising unimplemented addition. Content-ID auto-generated uploads carry a rigidly structured description block (`Provided to YouTube by [Distributor]\n\n[Track] · [Artist]\n[Album]\n℗ [year] [Label]\n...`), label-submitted metadata rather than a guess. `yt-dlp`'s `--parse-metadata` and various ID3 taggers rely on exactly this pattern. Would be a **third** independent attribution source alongside the existing `videoAttributeViewModel` panel scrape (`music-attribution.ts`) and DOM-title parsing — some videos may populate one but not the other. Plain text already in the page/description field; no new permissions or network calls needed. Not implemented.
+- **YouTube Data API v3 (`videos.list`)** — official `snippet`/`topicDetails` fields don't expose artist/track any better than the `ytInitialData` blob already scraped for free; would only add an API-key/quota dependency for no benefit.
+- **Audio fingerprinting (Shazam-style / AcoustID+Chromaprint)** — categorically different: recognize the song from audio instead of parsing text. Immune to garbage/joke titles, but heavy for a content script (audio capture/decoding, a paid/rate-limited fingerprint API, real latency). Reasonable only as a last-resort fallback if text-based matching returns nothing, not as a primary method.
+- **Cloud LLM API** — rejected. No backend infra exists (`manifest.json` has zero `host_permissions` beyond `lrclib.net`); would need a proxy service to hide an API key, adding cost and a new data flow (video titles/descriptions sent to a third party) for a currently fully client-side, free extension. Non-deterministic output also breaks the existing golden-case test model (`tests/core/title-normalizer.test.ts` pins exact output for dozens of specific tricky titles).
+- **Bundled tiny local LLM** (WebLLM/transformers.js) — rejected. Multi-hundred-MB download + WASM/WebGPU runtime + multi-second cold start, wildly disproportionate for a task the regex pipeline does in under a millisecond.
+- **Chrome's built-in Prompt API (Gemini Nano)** — the one on-device option worth naming, since Chrome (not the extension) owns the model: `"permissions": ["languageModel"]`, stable since Chrome 138, zero bundle size, zero network egress, zero cost. Still not recommended as a replacement: model availability isn't guaranteed (Chrome downloads it lazily, hardware-gated), output still needs schema validation/retry, and it would only replace the already-free, already-tested `title-normalizer.ts` parsing step — the `search-query.ts` + `match-scorer.ts` disambiguation against LRCLIB is still needed regardless of what produces the artist/track guess.
+
+### Academic literature found
+
+Searched for whether "parse artist/track from a freeform title" or the LLM alternative has a stronger answer in the research literature than the regex/candidate-scoring approach already in this repo:
+
+- [**A Benchmark and Robustness Study of In-Context-Learning with LLMs in Music Entity Detection**](https://arxiv.org/pdf/2412.11851) (NLP4MusA 2024) — builds an IOB-tagged dataset of **YouTube video titles** for song/artist NER, benchmarks LLM in-context learning vs. smaller/BERT models. Key finding directly relevant here: LLM accuracy tracks how much a given artist/song was seen during pretraining — i.e. it's *worst* on exactly the long-tail, non-Western titles (Thai, CJK) this codebase's hardest bugs come from. Evidence against using an LLM for this pipeline, not for it.
+- [**Leveraging User-Generated Metadata of Online Videos for Cover Song Identification**](https://arxiv.org/html/2412.11818v1) (NLP4MusA 2024) — skips title-splitting entirely, fuzzy-matches the whole raw title against candidates via rapidfuzz `token_ratio` (max of normalized Indel similarity and token-set ratio) — conceptually close to this repo's Levenshtein-based `similarity()` in `match-scorer.ts`. No isolated title-parsing accuracy reported, only end-to-end pipeline numbers. Explicitly flags (as a limitation) that they don't look at video descriptions — the same gap the "Provided to YouTube by" idea above would close.
+- [Columbia LabROSA — Artist/album/song name text normalization](http://labrosa.ee.columbia.edu/projects/musicsim/normalization.html) — older practical reference (not peer-reviewed), documents the classic accent-stripping / Unicode-to-Latin / title-case normalization recipe this repo's NFC-normalize-and-strip-punctuation approach descends from.
+- Conclusion drawn: nobody in the literature has a materially better *parsing* algorithm than rules + fuzzy matching; the NER/LLM paper's own finding is an argument for keeping the deterministic regex + candidate-generation + score-gating design already built here.
 
 ## Next actions
 
