@@ -13,6 +13,8 @@ import {
   readVideoMeta,
   readLyricsCache,
   writeLyricsCache,
+  isNotFoundCached,
+  writeNotFoundCache,
   type StorageLike,
 } from './storage';
 import type { LrclibRecord } from '../core/types';
@@ -84,6 +86,11 @@ export async function handleFetchLyrics(
     console.log(`[karaoke] no VideoMeta for videoId=${request.videoId} → first visit, searching`);
   }
 
+  if (storage && await isNotFoundCached(storage, request.videoId)) {
+    console.log(`[karaoke] not-found cache HIT videoId=${request.videoId} "${request.track}" → skipping search`);
+    return { ok: false, reason: 'not-found', message: 'No lyrics found for this song.' };
+  }
+
   const readings = [
     { artist: request.artist, track: request.track },
     ...(request.alternates ?? []),
@@ -121,6 +128,7 @@ export async function handleFetchLyrics(
   }
 
   if (!best) {
+    if (storage) await writeNotFoundCache(storage, request.videoId);
     return { ok: false, reason: 'not-found', message: 'No lyrics found for this song.' };
   }
 

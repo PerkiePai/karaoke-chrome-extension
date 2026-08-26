@@ -14,6 +14,8 @@ const ICON_SVG_COLLAPSED =
 export interface PanelHandle {
   setHeader(title: string, subtitle: string): void;
   setStatus(message: string): void;
+  /** Shows a status message inside the search overlay (yellow, no layout shift). */
+  setSearchStatus(message: string): void;
   /** `synced=false` (the default is true) renders every line in the same
    *  bold/white style as an active line — used for plain-text lyrics that
    *  have no timestamps to highlight against. */
@@ -110,26 +112,30 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     </div>
     <div class="kx-body">
       <div class="kx-body-inner">
-        <div class="kx-offset kx-hidden">
-          <button class="kx-offset-back" title="Shift lyrics earlier (−0.25 s)">◀</button>
-          <input class="kx-offset-value" type="text" value="+0.00s" title="Click to type an offset (e.g. -45 or +10.5)" />
-          <button class="kx-offset-fwd" title="Shift lyrics later (+0.25 s)">▶</button>
-          <button class="kx-sync-here" title="Set the offset from this moment">Sync here</button>
+        <div class="kx-controls-row">
+          <div class="kx-offset kx-hidden">
+            <button class="kx-offset-back" title="Shift lyrics earlier (−0.25 s)">◀</button>
+            <input class="kx-offset-value" type="text" value="+0.00s" title="Click to type an offset (e.g. -45 or +10.5)" />
+            <button class="kx-offset-fwd" title="Shift lyrics later (+0.25 s)">▶</button>
+            <button class="kx-sync-here" title="Set the offset from this moment">Sync here</button>
+          </div>
+          <div class="kx-speed kx-hidden">
+            <button class="kx-speed-down" title="Scroll slower">▼</button>
+            <span class="kx-speed-value">1.0x</span>
+            <button class="kx-speed-up" title="Scroll faster">▲</button>
+            <button class="kx-scroll-pause" title="Pause auto-scroll">⏸</button>
+          </div>
+          <button class="kx-not-this kx-hidden">Not this one?</button>
         </div>
-        <div class="kx-speed kx-hidden">
-          <button class="kx-speed-down" title="Scroll slower">▼</button>
-          <span class="kx-speed-value">1.0x</span>
-          <button class="kx-speed-up" title="Scroll faster">▲</button>
-          <button class="kx-scroll-pause" title="Pause auto-scroll">⏸</button>
+        <div class="kx-search-overlay kx-hidden">
+          <form class="kx-search-form" autocomplete="off">
+            <input class="kx-search-input" type="text" placeholder="Artist and song title…">
+            <button type="submit" class="kx-search-btn">Search</button>
+            <button type="button" class="kx-search-close" title="Close">✕</button>
+          </form>
+          <div class="kx-search-status"></div>
+          <ol class="kx-candidates kx-hidden"></ol>
         </div>
-        <div class="kx-correct-bar kx-hidden">
-          <button class="kx-not-this">Not this one?</button>
-        </div>
-        <form class="kx-search-form kx-hidden" autocomplete="off">
-          <input class="kx-search-input" type="text" placeholder="Artist and song title…">
-          <button type="submit" class="kx-search-btn">Search</button>
-        </form>
-        <ol class="kx-candidates kx-hidden"></ol>
         <div class="kx-status"></div>
         <ol class="kx-lines"></ol>
       </div>
@@ -278,6 +284,13 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     if (q) searchListener?.(q);
   });
 
+  find<HTMLElement>('.kx-search-close').addEventListener('click', () => {
+    find<HTMLElement>('.kx-search-overlay').classList.add('kx-hidden');
+    find<HTMLElement>('.kx-candidates').classList.add('kx-hidden');
+    find<HTMLElement>('.kx-search-status').textContent = '';
+    find<HTMLElement>('.kx-search-status').style.display = 'none';
+  });
+
   return {
     setHeader(title, subtitle) {
       find('.kx-title').textContent = title;
@@ -285,6 +298,11 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     setStatus(message) {
       const el = find<HTMLElement>('.kx-status');
+      el.textContent = message;
+      el.style.display = message ? 'block' : 'none';
+    },
+    setSearchStatus(message) {
+      const el = find<HTMLElement>('.kx-search-status');
       el.textContent = message;
       el.style.display = message ? 'block' : 'none';
     },
@@ -380,11 +398,11 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       collapseChangeListener = callback;
     },
     showCorrectBar(visible) {
-      find<HTMLElement>('.kx-correct-bar').classList.toggle('kx-hidden', !visible);
+      find<HTMLElement>('.kx-not-this').classList.toggle('kx-hidden', !visible);
     },
     enterSearchMode(query) {
       find<HTMLInputElement>('.kx-search-input').value = query;
-      find<HTMLElement>('.kx-search-form').classList.remove('kx-hidden');
+      find<HTMLElement>('.kx-search-overlay').classList.remove('kx-hidden');
       find<HTMLElement>('.kx-candidates').classList.add('kx-hidden');
     },
     showCandidates(candidates) {
@@ -409,11 +427,12 @@ export function mountPanel(container: HTMLElement): PanelHandle {
         }),
       );
       listEl.classList.remove('kx-hidden');
-      find<HTMLElement>('.kx-search-form').classList.add('kx-hidden');
     },
     exitSearchMode() {
-      find<HTMLElement>('.kx-search-form').classList.add('kx-hidden');
+      find<HTMLElement>('.kx-search-overlay').classList.add('kx-hidden');
       find<HTMLElement>('.kx-candidates').classList.add('kx-hidden');
+      find<HTMLElement>('.kx-search-status').textContent = '';
+      find<HTMLElement>('.kx-search-status').style.display = 'none';
     },
     onCorrectRequest(callback) {
       correctRequestListener = callback;

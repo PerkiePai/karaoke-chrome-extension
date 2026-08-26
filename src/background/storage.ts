@@ -18,7 +18,33 @@ export interface VideoMeta {
 const VM_PREFIX = 'vm:';
 const LC_PREFIX = 'lc:';
 const LC_ORDER_KEY = 'lc:order';
+const NF_PREFIX = 'nf:';
+const NF_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const LYRICS_CACHE_MAX = 50;
+
+/** Returns true when a valid (non-expired) not-found entry exists for this videoId. */
+export async function isNotFoundCached(
+  storage: StorageLike,
+  videoId: string,
+): Promise<boolean> {
+  const key = `${NF_PREFIX}${videoId}`;
+  const result = await storage.get([key]);
+  const v = result[key];
+  if (v != null && typeof v === 'object' && 'at' in v && typeof (v as { at: unknown }).at === 'number') {
+    const age = Date.now() - (v as { at: number }).at;
+    if (age < NF_TTL_MS) return true;
+    await storage.remove([key]);
+  }
+  return false;
+}
+
+export async function writeNotFoundCache(storage: StorageLike, videoId: string): Promise<void> {
+  await storage.set({ [`${NF_PREFIX}${videoId}`]: { at: Date.now() } });
+}
+
+export async function clearNotFoundCache(storage: StorageLike, videoId: string): Promise<void> {
+  await storage.remove([`${NF_PREFIX}${videoId}`]);
+}
 
 export async function readVideoMeta(
   storage: StorageLike,

@@ -51,7 +51,7 @@ export const PANEL_STYLES = `
     opacity: 1;
     transition: grid-template-rows 0.3s ease, opacity 0.25s ease;
   }
-  .kx-body-inner { overflow: hidden; min-height: 0; }
+  .kx-body-inner { overflow: hidden; min-height: 0; position: relative; }
   .kx-panel.kx-collapsed .kx-body {
     grid-template-rows: 0fr;
     opacity: 0;
@@ -115,14 +115,18 @@ export const PANEL_STYLES = `
   .kx-line-clickable { cursor: pointer; }
   .kx-line-clickable:hover { color: #ffffff; opacity: 0.85; }
   .kx-hidden { display: none !important; }
+  .kx-controls-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #303030;
+    font-size: 12px;
+    color: #aaa;
+  }
   .kx-offset {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 4px 0 2px;
-    font-size: 12px;
-    color: #aaa;
-    border-bottom: 1px solid #303030;
   }
   .kx-offset button {
     background: none;
@@ -142,25 +146,31 @@ export const PANEL_STYLES = `
   }
   .kx-offset-value:hover { background: #2a2a2a; }
   .kx-offset-value:focus { outline: 1px solid #555; background: #1a1a1a; cursor: text; }
-  .kx-correct-bar {
-    padding: 4px 0;
-    border-bottom: 1px solid #303030;
-  }
   .kx-not-this {
     background: none;
     border: none;
     color: #888;
     font-size: 11px;
     cursor: pointer;
-    padding: 0;
+    padding: 2px 0 2px 6px;
     text-decoration: underline;
+    margin-left: auto;
   }
   .kx-not-this:hover { color: #aaa; }
+  .kx-search-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    background: #0f0f0f;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+  }
   .kx-search-form {
     display: flex;
     gap: 6px;
-    padding: 6px 0;
+    padding: 4px 0 2px;
     border-bottom: 1px solid #303030;
+    flex-shrink: 0;
   }
   .kx-search-input {
     flex: 1;
@@ -183,13 +193,18 @@ export const PANEL_STYLES = `
     padding: 3px 8px;
   }
   .kx-search-btn:hover { background: #444; }
+  .kx-search-close {
+    background: none; border: none; color: #666; cursor: pointer;
+    font-size: 13px; padding: 0 2px; line-height: 1;
+  }
+  .kx-search-close:hover { color: #aaa; }
+  .kx-search-status { display: none; font-size: 12px; color: #ffb86b; padding: 6px 0; }
   .kx-candidates {
     list-style: none;
     margin: 0;
     padding: 4px 0;
-    max-height: 160px;
+    max-height: 200px;
     overflow-y: auto;
-    border-bottom: 1px solid #303030;
   }
   .kx-candidate {
     cursor: pointer;
@@ -209,7 +224,6 @@ export const PANEL_STYLES = `
     padding: 4px 0 2px;
     font-size: 12px;
     color: #aaa;
-    border-bottom: 1px solid #303030;
   }
   .kx-speed button {
     background: none;

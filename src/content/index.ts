@@ -274,7 +274,7 @@ async function activate(videoId: string): Promise<void> {
     // happened while the search was in-flight and avoid writing results onto
     // the new video's panel.
     const searchGen = generation;
-    panel!.setStatus('Searching…');
+    panel!.setSearchStatus('Searching…');
     try {
       let resp: SearchCandidatesResponse;
       try {
@@ -284,21 +284,19 @@ async function activate(videoId: string): Promise<void> {
         });
       } catch {
         if (searchGen !== generation || !panel) return;
-        panel.setStatus('Search failed. Is the extension worker running?');
-        panel.exitSearchMode();
+        panel.setSearchStatus('Search failed. Is the extension worker running?');
         return;
       }
       if (searchGen !== generation || !panel) return;
       if (!resp.ok) {
-        panel.setStatus(resp.message);
-        panel.exitSearchMode();
+        panel.setSearchStatus(resp.message);
         return;
       }
       if (resp.candidates.length === 0) {
-        panel.setStatus('No results found. Try different keywords.');
+        panel.setSearchStatus('No results found. Try different keywords.');
         return;
       }
-      panel.setStatus('');
+      panel.setSearchStatus('');
       panel.showCandidates(resp.candidates);
     } finally {
       searchInFlight = false;
@@ -430,6 +428,7 @@ async function load(videoId: string, gen: number): Promise<void> {
       panel.setOffsetControls(false);
       panel.setSpeedControls(false);
       currentSyncedLines = [];
+      if (response.reason === 'not-found') panel.showCorrectBar(true);
       return;
     }
 
@@ -454,6 +453,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     persistVideoMeta(videoId, response.lrclibId, 'load');
     currentRecord = response.record;
     panel.setHeader(record.trackName, record.artistName);
+    panel.showCorrectBar(true);
 
     const plan = planRender(record);
 

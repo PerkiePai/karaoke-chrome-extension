@@ -1,7 +1,7 @@
 import { searchLyrics } from '../lrclib/client';
 import { handleFetchLyrics } from './handle-fetch-lyrics';
 import { handleSearchCandidates } from './handle-search-candidates';
-import { writeLyricsCache, type StorageLike } from './storage';
+import { writeLyricsCache, clearNotFoundCache, type StorageLike } from './storage';
 import type {
   FetchLyricsRequest,
   SearchCandidatesRequest,
@@ -43,7 +43,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const req = message as PickCandidateRequest;
     // Only cache the lyrics — VideoMeta is written synchronously by the content
     // script at pick time, so the background never races with a nudge write.
-    void writeLyricsCache(storage, req.record.id, req.record).then(() => {
+    void Promise.all([
+      writeLyricsCache(storage, req.record.id, req.record),
+      clearNotFoundCache(storage, req.videoId),
+    ]).then(() => {
       sendResponse({ ok: true } satisfies PickCandidateResponse);
     });
     return true;
