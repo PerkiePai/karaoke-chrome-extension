@@ -353,6 +353,76 @@ Three user-requested features/fixes, no formal plan doc (small, independent, bou
 - Artist named `Live`/`Cover`/etc. with Thai-only track → empty query (narrow recall miss).
 - Minor: leftmost-separator splitting means `AC | DC - Song` yields artist "AC".
 
+## Session 11 — title-normalizer CJK/full-width bugs found via a real playlist audit; SaaS/licensing research
+
+Started from a pasted `nf:` (not-found) cache dump, then systematically audited the full `PLFHg5PiuP4_ZlrYdpIT4H1MVCWHw7hbyf` YouTube playlist (210 of 228 videos fetched via the `youtubei/v1/browse` continuation API — see method below) against the real LRCLIB API to separate genuine not-found (instrumental/ambient tracks) from pipeline bugs.
+
+### Bug #1 — fixed, uncommitted: full-width parens + `/` separator (`src/core/title-normalizer.ts`)
+
+Root cause: Japanese YouTube titles commonly write `曲名（feat.名前）/『アーティスト』` — a full-width paren `（）` (U+FF08/09) around a feat. credit glued directly to the name with no space, and `/` as the artist/track separator. None of the three were handled:
+- `FEATURED_BRACKETED` / `BRACKETED_NOISE` / `DUPLICATED_ACROSS_BRACKETS` only matched ASCII `()`/`[]`, so `（feat.れん）` survived every noise stripper.
+- `FEATURED_BRACKETED` required `\s+` after the feat. keyword; Japanese has no such space, so it wouldn't have stripped the bracket even with full-width support.
+- `/` wasn't a recognized separator at all.
+
+The leftover literal `feat.` became the *entire* search query (it was the only surviving Latin token, and `search-query.ts` treats any surviving Latin token as identifying) — a real song (好きだから. by 『ユイカ』, confirmed present on LRCLIB) was reported not-found.
+
+Fix: extended the bracket regexes to also match full-width `（）`, relaxed the required whitespace after "feat." to `\s*`, and added `' /'`/`'/ '` as separators (guarded to need adjacent whitespace so `AC/DC` doesn't split). Verified end-to-end against the live LRCLIB API — corrected query scores 0.95 (threshold 0.55). 3 regression tests added to `tests/core/title-normalizer.test.ts`. Full suite: same pre-existing 6 `panel.test.ts` failures as master (unrelated — confirmed via `git stash`), no new regressions.
+
+**Status: implemented, tested, NOT committed.** `git status`: `src/core/title-normalizer.ts` and `tests/core/title-normalizer.test.ts` both modified.
+
+### Playlist audit method (reusable)
+
+YouTube's playlist page embeds only the first 100 items as `lockupViewModel` objects (`{contentId, metadata.lockupMetadataViewModel.title.content}`) inside `var ytInitialData = {...}` in the raw HTML — not the older `playlistVideoRenderer` shape. The rest come from `POST https://www.youtube.com/youtubei/v1/browse?key={INNERTUBE_API_KEY}` with `{context: INNERTUBE_CONTEXT, continuation: token}`, where both the key and context are also embedded in the initial HTML and the continuation token is under `...continuationCommand.token` in the parsed JSON. Paged this way to 210/228 videos (the missing ~18 are likely private/deleted, not present in any page).
+
+To compare old vs. new title-normalizer behavior at scale: a scratch vitest test importing both the current `src/core/title-normalizer.ts` and a `git show HEAD:...` copy, running each video's primary reading through the real `buildSearchQuery` → live LRCLIB search → `pickBestScored`, with a query-string cache shared across both pipelines (most titles produce an identical query either way, so this avoids ~2x redundant network calls). Scratch files were deleted after use (`tests/_scratch_*.test.ts` — never commit these).
+
+**Result on this specific playlist: 133/210 found, before and after Bug #1's fix — 0 changed.** Expected: the playlist is all Thai-language titles, and Bug #1 only affects the Japanese full-width-paren/slash convention. Confirms the fix is real but doesn't move the needle on *this* dataset — it was found from the artifact dump, not from this playlist.
+
+### Bug #2 — fixed, uncommitted (implemented after the research pause below)
+
+Of the 77 still-not-found videos (post-Bug-#1-fix), `zXX4GCP11eI` — title `【MV】 「右ポケット」 /  9Lana` — loses the actual song title entirely. `CJK_BRACKETED_NOISE` (`title-normalizer.ts`) unconditionally strips **everything** inside `【】` and `「」`, with no keyword gate (unlike `BRACKETED_NOISE`, which only strips ASCII/full-width parens containing a promo keyword). `「右ポケット」` ("Right Pocket") is the real track title, not noise — it's wrapped in `「」` because that bracket is literally Japan's quotation mark (kagi kakko), not a promo tag. Result: query collapses to just `9Lana` (the artist), losing the title.
+
+Confirmed via research this is a known, previously-solved ambiguity — see below — not a one-off. Only 1 of 210 videos in this playlist hits it (the other two `「」` matches in the not-found set, `o07e96DPB5c` and `5xuALlBVZUM`, correctly contain promo keywords like "Official Lyrics Video" and are fine to strip), but it's the same *class* of bug as #1: real content lost because 【】/「」 are treated as unconditionally-noise brackets rather than gated like their ASCII counterparts.
+
+**Fix, in two parts, both needed** — found by tracing the bug all the way through, not stopping at the first layer:
+1. `title-normalizer.ts`: extracted a shared `PROMO_KEYWORDS_SRC` regex source and gated `CJK_BRACKETED_NOISE` on it (same check `BRACKETED_NOISE` already used for ASCII/full-width parens) — a promo tag like `【OFFICIAL MV】` still strips, a quoted title like `「右ポケット」` no longer does. Verified: parse alone wasn't enough — even with `「右ポケット」` surviving in the parsed field, `buildSearchQuery` still produced just `q=9Lana`.
+2. `search-query.ts`: `buildSearchQuery` only ever carried a field's text into the query if it was predominantly Thai or had Latin tokens — any other script (Japanese/Chinese/Korean) was silently dropped whenever Latin content existed elsewhere in the title. Added `OTHER_SCRIPT_RUN` (`\p{L}\p{M}` runs, excluding Thai to avoid double-counting) as a fallback, included only when a field's own Latin-token count is zero.
+
+Verified end-to-end: `q=右ポケット 9Lana` returns the exact record (`右ポケット / 9Lana`, 162s) that `q=9Lana` alone couldn't (20 unrelated same-artist tracks, target absent — LRCLIB's 20-result cap).
+
+### Prior-art research: is this problem already solved?
+
+Yes — parsing artist/track from a freeform YouTube title is an established problem with existing libraries, not something specific to this codebase:
+- [`get-artist-title`](https://github.com/goto-bus-stop/get-artist-title) (npm, MIT) — built for plug.dj's now-playing scrobbler. Ports exist: `youtube_title_parse` (Python), `YouTubeTitleParse` (C#), `SongTitleParser` (Java-ish, independent).
+- Two design choices directly relevant to Bug #2: (1) its `cleanMVPV` only strips brackets matching an MV/PV/official pattern, never blanket-strips bracket content — same principle this codebase's `BRACKETED_NOISE` already uses for ASCII parens, but `CJK_BRACKETED_NOISE` doesn't. (2) its `quoted-title.js` plugin treats `""`/`''` as a *positive* "this is the title" signal, extracting the quoted content rather than stripping it as noise.
+- Independent web research confirms why this matters for CJK: `「」`/`『』` (kagi kakko) are literally the Japanese quotation mark, used to quote/set off a work's title — and `【】` (lenticular brackets) have a *second*, competing convention of wrapping the artist name (`【Musician's Name】Song Title`), not just promo tags. Both conventions are already documented outside this codebase.
+
+### Bug #3 — fixed, uncommitted: Thai text dropped by the >50% predominance gate
+
+After Bug #2's fix, re-audited all 78 still-not-found videos: for each, tried the swapped-reading's own query and a maximally-loose "keep everything" query, unioned the result sets, and rescored — surfacing any case where a real match exists but production's single primary-reading query can't reach it. Found 4 candidate flips; investigated each individually rather than trusting the aggregate number (per the user's explicit "don't hardcode/mockup the score" — verify against real output, not hand-typed expectations):
+
+- **`นิ่ง - พัน พลุแตก [Official MV]`**: NOT a real bug. Directly reproducing the exact production scoring logic found the correct record at score 0.9 — the earlier "not found" reading was live-API flakiness under the audit script's 6-way concurrent load, not something production (which sends one request at a time) would hit.
+- **`ลม (Remaster)`, `อยากหยุดเวลา (Cover Version)...`, `ใจความสำคัญ (From "...")`**: all three share one root cause. `buildSearchQuery`'s Thai-text extraction only ran when a field was **>50% Thai by codepoint count** (`isPredominantlyThai`). A short/moderate Thai title next to a longer English parenthetical (a remaster/version/cover tag, or a "From ..." source-work attribution) falls under that threshold, and the Thai text — the only actually-identifying part — was dropped entirely. `q=Remaster` (20 unrelated results) vs the real record needing `q=ลม Remaster`; confirmed all three narrow to a small set containing the exact record once Thai extraction stops being gated on predominance.
+
+**Fix**: `extractThaiText` now runs unconditionally on every field; the `isPredominantlyThai` threshold still gates whether that field's *own Latin tokens* are also kept (preserves the existing "Atom ชนกันต์" nickname-dropping test). Also added `'อัลบั้ม'` ("album") to `THAI_STOP_WORDS` — a channel-name-noise word (same class as the existing `'เพลง'`/"song") that only started leaking into queries once Thai extraction became unconditional.
+
+**A regression this surfaced, and a real architectural limit found while fixing it**: making Thai extraction unconditional makes the query **order-dependent** when both fields can independently contribute Thai text — violates `buildSearchQuery`'s own documented "both orderings share one request" invariant. First instinct (sort the collected Thai/other-script parts before joining) was wrong — verified via real output, not assumption — because it broke already-correct, already-tested behavior for titles where *both* fields are themselves fully Thai script (e.g. `บอดี้สแลม` is the Thai spelling of "Bodyslam", not Latin — that case was already order-sensitive before this session and just never tested under a literal argument swap). Reverted the sort; documented the residual order-dependence directly in the test (`tests/core/search-query.test.ts`, the Session-marker case) rather than hiding it, and confirmed empirically that LRCLIB's search result set is itself word-order-insensitive, so this doesn't affect recall in practice — only which of two equally-valid query strings gets sent.
+
+**A second, confirmed-real regression, root-caused precisely — shipped anyway, by user decision**: `ไม่รัก...ไม่ต้อง - นิว จิ๋ว (NEW&JIEW) [ Official MV ]` went from found (OLD, score 0.791) to not-found (NEW). Isolated the exact mechanism by testing term subsets directly against LRCLIB: `q=ไม่รัก ไม่ต้อง นิว จิ๋ว` (Thai only, 4 terms) → 4 results; `q=ไม่รัก ไม่ต้อง NEW JIEW` (Latin only, 4 terms) → 2 results; `q=ไม่รัก ไม่ต้อง นิว NEW` (Thai transliteration + its own Latin counterpart together, still 4 terms) → **0 results**. Not a term-count issue — specifically mixing a Thai transliteration of a name with that name's own Latin spelling zeroes LRCLIB's result set, even though either form alone works. Couldn't find a cheap heuristic distinguishing this from the 3 confirmed-good cases above (`ลม`+`Remaster` also mixes Thai+Latin in one field, but "Remaster" is an unrelated edit-tag, not a transliteration of "ลม" — the real distinguishing signal is semantic, not structural). Presented the tradeoff explicitly to the user (net effect on this playlist: +3 fixed / -1 regressed = net +2, and the regression's failure mode — a silent miss — is safer than the old code's, which we also newly discovered can confidently serve the *wrong* song: `Nice 2 Meet U / Jon Connor` and `Freehand / Gentle Giant`, both unrelated Western acts matched off a shared name fragment). **User chose: ship as-is.**
+
+**Also found but explicitly out of scope, not fixed**: `SEPARATORS` doesn't include `:` (colon). Two titles (`ใจเกเร : Nice 2 Meet U [Official MV]`, `รสหวาน : FREEHAND (Official MV)`) never split into artist/track, so even though the fixed query now finds the *correct* record, the diluted (unsplit) track-similarity falls just under the match gate and it's rejected. Notably, the old code wasn't correct here either — it was confidently serving the wrong Western-artist match (see above), so this isn't a new gap, just a newly-visible one. Candidate for a future, narrowly-scoped fix (add `' : '` to `SEPARATORS`) — not attempted this session.
+
+**Methodological note for future sessions**: the "found" metric used throughout this playlist-audit work only checks that *some* candidate cleared `MATCH_THRESHOLD` — it does not verify the matched record is actually the right song. The `ใจเกเร`/`รสหวาน` cases proved the old pipeline was quietly serving wrong-artist matches often enough to be visible in a ~210-video sample. Any future "before/after found count" comparison on this playlist should be read as a lower-confidence signal for the *old* baseline specifically — some of its "found" count is probably wrong-song false positives, not real hits.
+
+**Status of all three bugs**: implemented, tested (37 title-normalizer + 26 search-query tests, all passing), full suite 315 passed with the same pre-existing 6 `panel.test.ts` failures / 2 typecheck errors as master (both reconfirmed via `git stash` this session too). **Not committed** — `git status`: `src/core/title-normalizer.ts`, `src/core/search-query.ts`, `tests/core/title-normalizer.test.ts`, `tests/core/search-query.test.ts` all modified.
+
+### Licensing/SaaS research (no code changes; answered a user question, not acted on)
+
+Asked whether `get-artist-title` and this extension's approach could become a paid product:
+- `get-artist-title`: MIT license, confirmed from its repo — free for commercial/SaaS use, only needs the copyright notice kept somewhere.
+- LRCLIB (server + API): MIT-licensed server, docs state no API key/registration required and no explicit commercial-use restriction — but it's a volunteer-run free service with no SLA, a business-continuity risk for anything built to scale on it.
+- **The real risk is neither of those**: LRCLIB's lyrics are user-submitted with no licensing deal with music publishers/songwriters — LRCLIB doesn't hold rights to the lyrics text any more than this extension would. A free personal-use extension pulling from that free community database is low-risk; a **paid product** built on the same unlicensed lyrics content is a materially different exposure. Flagged as a real legal question needing an actual lawyer, not resolved here — nothing implemented or decided.
+
 ## Next actions
 
 1. Category gate, error states, polish — the scope originally pencilled in for "Sprint 5" before it got reassigned to dual sync mode / detection signals; still not started.

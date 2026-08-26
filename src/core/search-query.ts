@@ -18,6 +18,11 @@ const THAI_RUN = /[฀-๿]+/g;
  */
 const THAI_STOP_WORDS = new Set([
   'เพลง', // "song" — e.g. "เพลง นายหญิง" → real track name is "นายหญิง"
+  // "album" — e.g. a channel name "Phumin อัลบั้ม 2". Only surfaced once Thai
+  // extraction became unconditional (below) instead of gated on a field
+  // being >50% Thai — "Phumin อัลบั้ม 2" is exactly 50%, so this word never
+  // reached extractThaiText before.
+  'อัลบั้ม',
 ]);
 
 /**
@@ -57,6 +62,32 @@ function isPredominantlyThai(text: string): boolean {
 }
 
 /**
+ * A run of letters/marks in any script — used only as the FALLBACK below, on
+ * a field that has neither Thai nor Latin content (Japanese kana/kanji,
+ * Chinese hanzi, Korean hangul, …). Scoped to `\p{L}`/`\p{M}` so it never
+ * picks up bracket/quote punctuation left behind by `title-normalizer.ts`
+ * (e.g. the corner brackets around a quoted Japanese title are not `\p{L}`).
+ *
+ * Without this, a field like `「右ポケット」` (title-normalizer correctly keeps
+ * this — see its CJK_BRACKETED_NOISE comment) contributed NOTHING here once
+ * the reading's other field had identifying Latin content: the whole query
+ * collapsed to just the Latin field, e.g. `q=9Lana` instead of
+ * `q=9Lana 右ポケット` — 20 unrelated same-artist results instead of the one
+ * real match.
+ */
+const OTHER_SCRIPT_RUN = /[\p{L}\p{M}]+/gu;
+
+// Anchored, non-global: THAI_RUN itself is `g`-flagged and stateful (its
+// lastIndex persists across `.test()` calls), which would silently corrupt
+// every other call to it in this module — use a fresh, non-global regex here.
+const ALL_THAI = /^[฀-๿]+$/;
+
+function extractOtherScriptText(text: string): string {
+  const runs = text.match(OTHER_SCRIPT_RUN) ?? [];
+  return runs.filter((run) => !ALL_THAI.test(run)).join(' ');
+}
+
+/**
  * Builds the query string sent to LRCLIB's search endpoint.
  *
  * LRCLIB's search cannot tokenise Thai on its own: `q=ใจสั่งมา` returns zero
@@ -74,10 +105,19 @@ function isPredominantlyThai(text: string): boolean {
  * produce `q=Phumin 2` → 0 results. Where the token adds discrimination the
  * local scorer handles it: `trackSim("Yes 2", "Yes 2") = 1.0`.
  *
- * Thai text is collected from any field whose non-whitespace content is more
- * than 50 % Thai codepoints. This threshold admits "สุดทาง" (100 %) and
- * "ความเชื่อ (Live)" (60 %) while excluding "Phumin อัลบั้ม 2" (50 %) and
- * "Live Session วสันต์17" (28 %).
+ * Thai text is collected from EVERY field, unconditionally — not just one
+ * that's predominantly Thai. A field can pair a short/moderate Thai title
+ * with a much longer English parenthetical (a remaster/version/cover tag, or
+ * a "From ..." source-work attribution) and fall under 50 % Thai by
+ * codepoint count even though the Thai text is the only identifying part:
+ * `"ลม (Remaster)"` is 17 % Thai, and dropping its Thai text left the query as
+ * just `q=Remaster` (20 unrelated results); extracting it unconditionally
+ * gives `q=ลม Remaster`, which finds the exact record.
+ *
+ * The 50 % threshold still exists (`isPredominantlyThai`), but now gates only
+ * whether a field's OWN Latin tokens are also kept — see the "Atom ชนกันต์"
+ * case below. It admits "สุดทาง" (100 %) and "ความเชื่อ (Live)" (60 %) while
+ * excluding "Phumin อัลบั้ม 2" (50 %) and "Live Session วสันต์17" (28 %).
  *
  * Latin tokens are extracted PER FIELD, and a field's own tokens are skipped
  * once that field is classified as predominantly Thai. Thai celebrities are
@@ -96,29 +136,38 @@ function isPredominantlyThai(text: string): boolean {
  */
 export function buildSearchQuery(artist: string | null, track: string): string {
   const thaiParts: string[] = [];
+  const otherScriptParts: string[] = [];
   const identifyingLatin: string[] = [];
 
   for (const field of [artist ?? '', track]) {
-    if (isPredominantlyThai(field)) {
-      const t = extractThaiText(field);
-      if (t) thaiParts.push(t);
-      continue;
-    }
+    const t = extractThaiText(field);
+    if (t) thaiParts.push(t);
+
+    if (isPredominantlyThai(field)) continue;
+
     const latin = field.match(LATIN_RUN) ?? [];
     for (const token of latin) {
       if (!isNonIdentifying(token)) identifyingLatin.push(token);
     }
+    // A field with no Latin AND no Thai (Japanese/Chinese/Korean/etc.) would
+    // otherwise contribute nothing at all once the OTHER field has Latin
+    // content — see OTHER_SCRIPT_RUN's comment above for the concrete case.
+    if (latin.length === 0) {
+      const other = extractOtherScriptText(field);
+      if (other) otherScriptParts.push(other);
+    }
   }
-  const thaiText = thaiParts.join(' ');
+  const foreignText = [...thaiParts, ...otherScriptParts].join(' ');
 
   if (identifyingLatin.length) {
-    return thaiText
-      ? `${thaiText} ${identifyingLatin.join(' ')}`
+    return foreignText
+      ? `${foreignText} ${identifyingLatin.join(' ')}`
       : identifyingLatin.join(' ');
   }
 
-  // No identifying Latin — Thai text alone is the best retrieval key available.
-  if (thaiText) return thaiText;
+  // No identifying Latin — foreign-script text alone is the best retrieval
+  // key available.
+  if (foreignText) return foreignText;
 
   const source = `${artist ?? ''} ${track}`;
   return source.trim().replace(/\s+/g, ' ');

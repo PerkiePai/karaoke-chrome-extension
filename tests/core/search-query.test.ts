@@ -68,10 +68,14 @@ describe('buildSearchQuery', () => {
     );
   });
 
-  it('falls back to Thai artist text when only an Acoustic marker is present', () => {
-    // Track "ยาพิษ (Acoustic)" is <50% Thai by codepoint so only the artist
-    // contributes Thai text; the Acoustic marker is filtered as non-identifying.
-    expect(buildSearchQuery('บอดี้สแลม', 'ยาพิษ (Acoustic)')).toBe('บอดี้สแลม');
+  // Track "ยาพิษ (Acoustic)" is <50% Thai by codepoint, but Thai extraction is
+  // now unconditional (not gated on that threshold — see buildSearchQuery's
+  // docstring), so its real track name "ยาพิษ" still reaches the query even
+  // though the field as a whole isn't "predominantly" Thai. Confirmed live:
+  // q=บอดี้สแลม alone returns 20 unrelated Bodyslam tracks (not the one
+  // wanted); q=บอดี้สแลม ยาพิษ returns exactly the one record.
+  it('includes Thai track text even when the field is not predominantly Thai', () => {
+    expect(buildSearchQuery('บอดี้สแลม', 'ยาพิษ (Acoustic)')).toBe('บอดี้สแลม ยาพิษ');
   });
 
   it('falls back to Thai text when only a Remix marker is present', () => {
@@ -82,10 +86,24 @@ describe('buildSearchQuery', () => {
 
   it('falls back to Thai text when only a Session marker is present', () => {
     // "Live Session วสันต์17" — "Live" and "Session" are both non-identifying
-    // variant words; "17" is a bare digit. Thai from the track "ก่อนลา" is the
-    // only usable retrieval key.
-    expect(buildSearchQuery('ก่อนลา', 'Live Session วสันต์17')).toBe('ก่อนลา');
-    expect(buildSearchQuery('Live Session วสันต์17', 'ก่อนลา')).toBe('ก่อนลา');
+    // variant words and "17" is a bare digit, so none of those reach the
+    // query, but the Thai run "วสันต์" is real (non-stop-word) text and is
+    // now included unconditionally, alongside "ก่อนลา" from the other field.
+    //
+    // NOTE: unlike the single-Thai-field cases elsewhere in this file, this
+    // is NOT ordering-independent — when BOTH fields carry their own Thai
+    // text, the query's word order follows argument order (artist's text
+    // first), so swapping which string is passed as artist vs track changes
+    // the output string, even though both strings still carry the same two
+    // real Thai words. This gap predates this test: it already existed for
+    // any title where BOTH the artist and track readings are themselves
+    // fully Thai script (e.g. "บอดี้สแลม" — Thai spelling of "Bodyslam" — is
+    // itself 100% Thai), just never exercised under a literal argument swap
+    // before. LRCLIB's search is not sensitive to query word order in
+    // practice (see this function's docstring), so it doesn't affect
+    // recall — only which exact string among equivalent options is sent.
+    expect(buildSearchQuery('ก่อนลา', 'Live Session วสันต์17')).toBe('ก่อนลา วสันต์');
+    expect(buildSearchQuery('Live Session วสันต์17', 'ก่อนลา')).toBe('วสันต์ ก่อนลา');
   });
 
   it('does not search on a lone bare digit', () => {
@@ -105,11 +123,14 @@ describe('buildSearchQuery', () => {
     );
   });
 
-  // When identifying Latin tokens exist, non-identifying tokens are filtered
-  // rather than included. The local scorer handles disambiguation by
-  // trackSimilarity("Song (Live)", "Song (Live)") = 1.0 vs "Song" = lower.
-  it('filters a variant marker alongside an identifying token', () => {
-    expect(buildSearchQuery('Cocktail', 'เรา (Live)')).toBe('Cocktail');
+  // The variant marker "(Live)" is filtered as before, but the real Thai
+  // track name "เรา" is now included unconditionally (see buildSearchQuery's
+  // docstring) rather than dropped just because the field isn't
+  // "predominantly" Thai. Confirmed live: q=Cocktail alone returns 20 mixed
+  // Cocktail tracks; q=เรา Cocktail returns only the 5 records actually
+  // named เรา (studio + live cuts).
+  it('includes the real Thai track name alongside a filtered variant marker', () => {
+    expect(buildSearchQuery('Cocktail', 'เรา (Live)')).toBe('เรา Cocktail');
   });
 
   it('filters a bare digit alongside an identifying token', () => {
@@ -125,5 +146,24 @@ describe('buildSearchQuery', () => {
   it('drops a Latin nickname embedded in a predominantly-Thai artist field', () => {
     expect(buildSearchQuery('Atom ชนกันต์', 'PLEASE')).toBe('ชนกันต์ PLEASE');
     expect(buildSearchQuery('PLEASE', 'Atom ชนกันต์')).toBe('ชนกันต์ PLEASE');
+  });
+
+  // A field that is neither Thai nor Latin (Japanese, here) used to
+  // contribute NOTHING once the other field had a Latin token: q=9Lana
+  // instead of q=9Lana 右ポケット, which returns 20 unrelated tracks by the
+  // same artist on lrclib instead of the one requested.
+  it('includes Japanese text from a field with no Latin and no Thai content', () => {
+    expect(buildSearchQuery('9Lana', '右ポケット')).toBe('右ポケット 9Lana');
+    expect(buildSearchQuery('右ポケット', '9Lana')).toBe('右ポケット 9Lana');
+  });
+
+  it('falls back to Japanese text alone when neither field has Latin content', () => {
+    expect(buildSearchQuery('ユイカ', '好きだから')).toBe('ユイカ 好きだから');
+  });
+
+  it('does not double-count Thai text as "other script" text', () => {
+    // A predominantly-Thai field is handled entirely by the Thai path; the
+    // other-script fallback must never also pick up its Thai runs.
+    expect(buildSearchQuery('LOSO', 'คืนจันทร์')).toBe('คืนจันทร์ LOSO');
   });
 });
