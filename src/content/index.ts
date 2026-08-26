@@ -220,9 +220,17 @@ async function activate(videoId: string): Promise<void> {
     // that puts the first synced line exactly there. Motivating case: a
     // cold-open intro longer than the ±30s nudge range can reach in a
     // reasonable number of clicks — see SESSION.md Session 7.
+    //
+    // Targets the first line with actual text, not literally lines[0]: LRC
+    // files commonly lead with a blank timestamp (e.g. "[00:00.00]") marking
+    // the intro gap. findActiveLineIndex() never lights up a blank line —
+    // it walks back to the nearest preceding non-blank one, or null if there
+    // isn't one — so syncing to a blank first line would land the offset at
+    // a point that shows no highlight at all until the next real line.
     const video = document.querySelector('video');
-    if (!video || currentSyncedLines.length === 0) return;
-    const firstLineMs = currentSyncedLines[0]!.timeMs;
+    const firstLine = currentSyncedLines.find((line) => line.text !== '');
+    if (!video || !firstLine) return;
+    const firstLineMs = firstLine.timeMs;
     currentOffsetSec = (firstLineMs - video.currentTime * 1000) / 1000;
     currentOffsetSec = clampOffset(currentOffsetSec);
     currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
