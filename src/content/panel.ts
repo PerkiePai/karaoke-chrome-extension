@@ -35,6 +35,8 @@ export interface PanelHandle {
   setOffsetControls(visible: boolean, offsetSec?: number): void;
   /** Replaces the callback fired when ◀ (delta = -0.25) or ▶ (delta = +0.25) is clicked. */
   onOffsetNudge(callback: (delta: number) => void): void;
+  /** Replaces the callback fired when the user types and commits a direct offset value. */
+  onOffsetSet(callback: (offsetSec: number) => void): void;
   /** Scrolls the lyrics list to an absolute pixel offset, bypassing the
    *  active-line highlight logic in setActiveLine. Used by the auto-scroll
    *  loop for unsynced (plain-text) lyrics, which has no line index to
@@ -110,7 +112,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       <div class="kx-body-inner">
         <div class="kx-offset kx-hidden">
           <button class="kx-offset-back" title="Shift lyrics earlier (−0.25 s)">◀</button>
-          <span class="kx-offset-value">+0.00s</span>
+          <input class="kx-offset-value" type="text" value="+0.00s" title="Click to type an offset (e.g. -45 or +10.5)" />
           <button class="kx-offset-fwd" title="Shift lyrics later (+0.25 s)">▶</button>
           <button class="kx-sync-here" title="Set the offset from this moment">Sync here</button>
         </div>
@@ -210,6 +212,29 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   });
 
   let offsetNudgeListener: ((delta: number) => void) | null = null;
+  let offsetSetListener: ((sec: number) => void) | null = null;
+
+  const offsetInput = find<HTMLInputElement>('.kx-offset-value');
+  offsetInput.addEventListener('focus', () => {
+    // Strip the trailing "s" so the user can edit a bare number
+    offsetInput.value = offsetInput.value.replace(/s$/, '');
+    offsetInput.select();
+  });
+  function commitOffsetInput(): void {
+    const parsed = parseFloat(offsetInput.value);
+    if (isFinite(parsed)) {
+      offsetSetListener?.(parsed);
+    } else {
+      // Restore displayed value on bad input — setOffsetControls will reformat
+      offsetSetListener?.(0);
+    }
+  }
+  offsetInput.addEventListener('blur', commitOffsetInput);
+  offsetInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); offsetInput.blur(); }
+    if (e.key === 'Escape') { offsetInput.blur(); }
+  });
+
   find<HTMLElement>('.kx-offset-back').addEventListener('click', () => {
     offsetNudgeListener?.(-0.25);
   });
@@ -310,11 +335,14 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       el.classList.toggle('kx-hidden', !visible);
       if (visible && offsetSec !== undefined) {
         const sign = offsetSec >= 0 ? '+' : '';
-        find('.kx-offset-value').textContent = `${sign}${offsetSec.toFixed(2)}s`;
+        offsetInput.value = `${sign}${offsetSec.toFixed(2)}s`;
       }
     },
     onOffsetNudge(callback) {
       offsetNudgeListener = callback;
+    },
+    onOffsetSet(callback) {
+      offsetSetListener = callback;
     },
     setScrollTop(px) {
       linesEl.scrollTop = px;

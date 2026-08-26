@@ -28,8 +28,11 @@ const SECONDARY_POLL_MS = 200;
 const SECONDARY_TIMEOUT_MS = 10_000;
 const NAVIGATION_POLL_MS = 1000;
 const TITLE_TIMEOUT_MS = 10_000;
-const OFFSET_MIN_SEC = -30;
-const OFFSET_MAX_SEC = 30;
+function clampOffset(sec: number): number {
+  const video = document.querySelector<HTMLVideoElement>('video');
+  const dur = video && isFinite(video.duration) ? video.duration : Infinity;
+  return Math.max(-dur, Math.min(dur, sec));
+}
 const SPEED_MIN = 0.3;
 const SPEED_MAX = 3.0;
 
@@ -195,8 +198,16 @@ async function activate(videoId: string): Promise<void> {
   });
 
   panel.onOffsetNudge((delta) => {
-    currentOffsetSec += delta;
-    currentOffsetSec = Math.max(OFFSET_MIN_SEC, Math.min(OFFSET_MAX_SEC, currentOffsetSec));
+    currentOffsetSec = clampOffset(currentOffsetSec + delta);
+    currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
+    panel?.setOffsetControls(true, currentOffsetSec);
+    if (currentVideoId !== null && currentLrclibId !== null) {
+      persistVideoMeta(currentVideoId, currentLrclibId, 'nudge');
+    }
+  });
+
+  panel.onOffsetSet((sec) => {
+    currentOffsetSec = clampOffset(sec);
     currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
     panel?.setOffsetControls(true, currentOffsetSec);
     if (currentVideoId !== null && currentLrclibId !== null) {
@@ -213,7 +224,7 @@ async function activate(videoId: string): Promise<void> {
     if (!video || currentSyncedLines.length === 0) return;
     const firstLineMs = currentSyncedLines[0]!.timeMs;
     currentOffsetSec = (firstLineMs - video.currentTime * 1000) / 1000;
-    currentOffsetSec = Math.max(OFFSET_MIN_SEC, Math.min(OFFSET_MAX_SEC, currentOffsetSec));
+    currentOffsetSec = clampOffset(currentOffsetSec);
     currentSyncLoop?.setOffsetMs(currentOffsetSec * 1000);
     panel?.setOffsetControls(true, currentOffsetSec);
     if (currentVideoId !== null && currentLrclibId !== null) {

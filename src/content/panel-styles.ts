@@ -135,7 +135,13 @@ export const PANEL_STYLES = `
     line-height: 1.5;
   }
   .kx-offset button:hover { color: #fff; border-color: #aaa; }
-  .kx-offset-value { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+  .kx-offset-value {
+    min-width: 56px; width: 56px; text-align: center; font-variant-numeric: tabular-nums;
+    background: none; border: none; color: inherit; font: inherit; cursor: text;
+    padding: 0; border-radius: 3px;
+  }
+  .kx-offset-value:hover { background: #2a2a2a; }
+  .kx-offset-value:focus { outline: 1px solid #555; background: #1a1a1a; cursor: text; }
   .kx-correct-bar {
     padding: 4px 0;
     border-bottom: 1px solid #303030;
