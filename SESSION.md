@@ -362,3 +362,35 @@ Three user-requested features/fixes, no formal plan doc (small, independent, bou
 5. Close the remaining double-call race: a `reload` can fire in the 200ms window between `mountPanel` returning and `load()` setting `isLoading = true`, sending two `FETCH_LYRICS` messages for the same videoId. Benign with current fixes (both find same result) but wastes a network round-trip.
 6. Browser-verify the Session 7 panel changes (5-line window centering, overflow clip, static-lyric styling) in Opera GX — not yet done.
 7. Browser-verify the Session 10 changes (minimize/expand toggle and its animation, click-to-seek + centering, end-of-lyrics highlight persistence) in a real browser — built and unit-tested only so far, consistent with this project's running lesson that live testing is what actually catches these bugs.
+
+## Session 11 — inline offset typing, scanning animation, gear icon
+
+Three UI features shipped, no formal plan doc:
+
+- **Inline offset typing (feature 3)**: Clicking the offset value display (e.g. `+0.25s`) now replaces it with a small inline `<input>`. User types any number (e.g. `-2.5`). Enter or blur commits via `onOffsetInput` callback (fires with absolute seconds, clamped ±30s in `index.ts`); Escape cancels. The nudge buttons still work alongside it. Implementation: `kx-offset-value` span + `kx-offset-input` sibling hidden/shown on toggle; `commitOffsetEdit` has a guard against double-fire from programmatic hide→blur.
+- **Scanning line animation (feature 5)**: A 2px-tall `kx-scanner` bar appears while lyrics are being fetched. A 20%-wide white beam sweeps left→right on repeat (`@keyframes kx-scan`, `translateX(-100%)` → `translateX(500%)`), no progress bar semantics. `PanelHandle.setSearching(true/false)` is the toggle; called in `load()` (from start to finally) and the `onSearch` handler.
+- **Settings gear icon (feature 4)**: The time-shift row (`kx-offset`) now shows only a ⚙ button by default. Clicking it toggles the actual controls (`kx-offset-controls` div: ◀ value ▶ + Sync here). Gear turns white when expanded (`kx-gear-active` class). Controls stay in their last open/closed state across nudge calls (only collapse state changes when `setOffsetControls(false)` hides the whole row).
+
+Build clean, no test changes needed (these are all UI/DOM mutations with no pure-function logic to unit-test).
+
+## Pending feature ideas (from session 11 discussion)
+
+### Key transposition (pitch shift)
+Shift the YouTube video audio by ±N semitones without changing playback speed. Requires Web Audio API + a phase-vocoder library (e.g. `soundtouch-js` or a custom AudioWorklet) — no native Web Audio node does pitch-shift-without-timestretch. UI would be a semitone counter in the settings gear row. Medium-high complexity; treat as its own sprint. Risk: YouTube player changes may break audio capture.
+
+### Manual lyrics input (2a)
+Add a "Paste lyrics" flow (button in the search/correct bar area) with a `<textarea>`. The existing LRC parser and `planRender` already handle both synced-LRC and plain-text; this is purely a UI addition. Low complexity, could be a standalone session.
+
+### Gemini AI lyrics (2b)
+Use the Gemini API to generate lyrics from song title + artist as a last-resort fallback when LRCLIB returns nothing. Requires an API key settings UI (`chrome.storage.sync`). Copyright-grey for full lyrics generation; better framing is using Gemini to clean/reformat pasted text from feature 2a. Build 2a first (shared textarea/rendering pipeline).
+
+No popup exists. The quickest way to inspect the nf: cache right now is through Chrome's DevTools:
+
+1. Go to chrome://extensions
+2. Find YouTube Karaoke Lyrics → click Service worker (opens DevTools for the background)
+3. In the Console tab, run:
+chrome.storage.local.get(null, data => {
+  const nf = Object.entries(data).filter(([k]) => k.startsWith('nf:'));
+  console.table(nf.map(([k, v]) => ({ videoId: k.slice(3), cachedAt: new Date(v.at).toLocaleString() })));
+});
+
