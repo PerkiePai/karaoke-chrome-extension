@@ -281,17 +281,41 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     correctRequestListener?.();
   });
 
+  const searchInput = find<HTMLInputElement>('.kx-search-input');
+
   find<HTMLFormElement>('.kx-search-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const q = find<HTMLInputElement>('.kx-search-input').value.trim();
+    const q = searchInput.value.trim();
     if (q) searchListener?.(q);
   });
 
   // Stop keystrokes from reaching YouTube's document-level player shortcuts
   // (e.g. "f" for fullscreen, "k" for play/pause) while typing here.
-  find<HTMLInputElement>('.kx-search-input').addEventListener('keydown', (e) => {
+  searchInput.addEventListener('keydown', (e) => {
     e.stopPropagation();
   });
+
+  // Belt-and-suspenders for the shortcut leak above: YouTube's spacebar
+  // handler decides whether to play/pause by inspecting document.activeElement,
+  // which — because these inputs live inside a shadow root — resolves to the
+  // <div id="kx-panel-host"> host, not the focused <input>. That makes YouTube
+  // think nothing is focused, so per-element stopPropagation() never gets a
+  // chance to matter. Catch the key event in the capture phase at the window
+  // (which always runs before a listener YouTube attached on document, since
+  // capture flows outside-in) and use composedPath() — which pierces the
+  // shadow boundary — to see the *real* target underneath the retargeted one.
+  // Space specifically toggles play/pause on "keyup" (not "keydown" — that
+  // would repeat-fire while the key is held), so both must be swallowed.
+  function isPanelTextInput(e: KeyboardEvent): boolean {
+    const realTarget = e.composedPath()[0];
+    return realTarget === searchInput || realTarget === offsetInput;
+  }
+  function swallowShortcutKey(e: KeyboardEvent): void {
+    if (isPanelTextInput(e)) e.stopPropagation();
+  }
+  window.addEventListener('keydown', swallowShortcutKey, true);
+  window.addEventListener('keyup', swallowShortcutKey, true);
+  window.addEventListener('keypress', swallowShortcutKey, true);
 
   find<HTMLElement>('.kx-search-close').addEventListener('click', () => {
     find<HTMLElement>('.kx-search-overlay').classList.add('kx-hidden');
@@ -410,7 +434,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       find<HTMLElement>('.kx-not-this').classList.toggle('kx-hidden', !visible);
     },
     enterSearchMode(query) {
-      find<HTMLInputElement>('.kx-search-input').value = query;
+      searchInput.value = query;
       find<HTMLElement>('.kx-search-overlay').classList.remove('kx-hidden');
       find<HTMLElement>('.kx-candidates').classList.add('kx-hidden');
     },
@@ -454,6 +478,9 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     destroy() {
       stopScrollAnim();
+      window.removeEventListener('keydown', swallowShortcutKey, true);
+      window.removeEventListener('keyup', swallowShortcutKey, true);
+      window.removeEventListener('keypress', swallowShortcutKey, true);
       host.remove();
     },
   };
