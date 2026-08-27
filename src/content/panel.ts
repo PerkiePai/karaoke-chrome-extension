@@ -237,6 +237,9 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   }
   offsetInput.addEventListener('blur', commitOffsetInput);
   offsetInput.addEventListener('keydown', (e) => {
+    // Stop keystrokes from reaching YouTube's document-level player shortcuts
+    // (e.g. digit keys seek to a % of the video) while typing here.
+    e.stopPropagation();
     if (e.key === 'Enter') { e.preventDefault(); offsetInput.blur(); }
     if (e.key === 'Escape') { offsetInput.blur(); }
   });
@@ -282,6 +285,12 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     e.preventDefault();
     const q = find<HTMLInputElement>('.kx-search-input').value.trim();
     if (q) searchListener?.(q);
+  });
+
+  // Stop keystrokes from reaching YouTube's document-level player shortcuts
+  // (e.g. "f" for fullscreen, "k" for play/pause) while typing here.
+  find<HTMLInputElement>('.kx-search-input').addEventListener('keydown', (e) => {
+    e.stopPropagation();
   });
 
   find<HTMLElement>('.kx-search-close').addEventListener('click', () => {

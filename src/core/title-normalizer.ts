@@ -21,22 +21,50 @@ export interface ParsedTitle {
  * still disappear via the noise strippers, while `(Live)` survives them and so
  * survives this.
  */
+// （） is the full-width paren Japanese/Chinese titles use in place of ASCII
+// (), e.g. "好きだから。（feat.れん）/『ユイカ』【MV】" — without it, "（feat.れん）"
+// survives every stripper below and its lone Latin run ("feat.") becomes the
+// ENTIRE lrclib query, since search-query.ts treats any surviving Latin token
+// as identifying.
 const DUPLICATED_ACROSS_BRACKETS =
-  /(\S+(?:\s+\S+){0,3})(\s*(?:【[^】]*】|「[^」]*」|\[[^\]]*\]|\([^)]*\)))\s*\1\s*$/i;
+  /(\S+(?:\s+\S+){0,3})(\s*(?:【[^】]*】|「[^」]*」|\[[^\]]*\]|\([^)]*\)|（[^）]*）))\s*\1\s*$/i;
+
+// Shared by every bracket-noise pattern below so the promo-word list can't
+// drift out of step between the ASCII/full-width and CJK bracket variants.
+const PROMO_KEYWORDS_SRC = '(?:official|lyrics?|audio|m\\/?v|visualizer|teaser|hd|4k|\\d{3,4}p)';
 
 // Bracketed promo tags. Note the absence of live/acoustic/cover/remix:
 // the match scorer relies on those surviving.
-const BRACKETED_NOISE =
-  /[([]\s*[^)\]]*\b(?:official|lyrics?|audio|m\/?v|visualizer|teaser|hd|4k|\d{3,4}p)\b[^)\]]*\s*[)\]]/gi;
+const BRACKETED_NOISE = new RegExp(
+  `[([（]\\s*[^)\\]）]*\\b${PROMO_KEYWORDS_SRC}\\b[^)\\]）]*\\s*[)\\]）]`,
+  'gi',
+);
 
-const CJK_BRACKETED_NOISE = /(?:【[^】]*】|「[^」]*」)/g;
+// 【】 and 「」/『』 are NOT interchangeable with a promo bracket: 【】 sometimes
+// wraps the artist name (「Musician's Name」Song Title is a real convention),
+// and 「」/『』 are literally Japan's quotation mark (kagi kakko) — routinely
+// used to quote the actual song title, e.g. 【MV】「右ポケット」/ 9Lana, where
+// 「右ポケット」 IS the track name. Blindly stripping every 【】/「」 span (the
+// old behaviour) deleted that title outright and left a query of just the
+// artist name, which returns 20 unrelated same-artist tracks on lrclib
+// instead of the one requested. Gating on the same promo-keyword check
+// BRACKETED_NOISE already uses for ASCII/full-width parens fixes this: a
+// promo tag like 【OFFICIAL MV】 still strips (contains a keyword), while a
+// quoted title like 「右ポケット」 does not (no keyword) and survives to be
+// picked up by search-query.ts.
+const CJK_BRACKETED_NOISE = new RegExp(
+  `(?:【[^】]*\\b${PROMO_KEYWORDS_SRC}\\b[^】]*】|「[^」]*\\b${PROMO_KEYWORDS_SRC}\\b[^」]*」)`,
+  'gi',
+);
 
 // Featured-artist credits come in two shapes and must be handled separately.
 // A bracketed credit may safely run to its closing bracket. A BARE credit has no
 // closing bracket, so it must stop at the artist/track separator or end of
 // string — a greedy `[^)\]]*` there swallows the separator and the track with it.
 // The `\b` is load-bearing: without it `ft` matches inside "Swift".
-const FEATURED_BRACKETED = /\s*[([]\s*\b(?:featuring|feat\.?|ft\.?)\s+[^)\]]*[)\]]/gi;
+// `\s*` (not `\s+`) after the keyword: Japanese titles glue the credited name
+// straight on with no space, e.g. "（feat.れん）".
+const FEATURED_BRACKETED = /\s*[([（]\s*\b(?:featuring|feat\.?|ft\.?)\s*[^)\]）]*[)\]）]/gi;
 const FEATURED_BARE = /\s*\b(?:featuring|feat\.?|ft\.?)\s+.*?(?=\s+[-–—|]\s|$)/gi;
 
 const BARE_NOISE = [
@@ -52,7 +80,10 @@ const BARE_NOISE = [
   /\s*[-–—|]\s*(?:english|thai|japanese|korean|chinese|spanish|french|german|portuguese|italian|arabic|hindi)\s*$/gi,
 ];
 
-const SEPARATORS = [' - ', ' – ', ' — ', ' | '];
+// A slash separator is only trusted when whitespace touches at least one
+// side ("Track / Artist", "Track/ Artist"). A bare "/" with no adjacent
+// space is left alone so it doesn't split an artist name like "AC/DC".
+const SEPARATORS = [' - ', ' – ', ' — ', ' | ', ' /', '/ '];
 
 const EDGE_JUNK = /^[-–—|:\s]+|[-–—|:\s]+$/g;
 

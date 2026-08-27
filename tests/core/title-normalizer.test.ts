@@ -215,6 +215,32 @@ describe('normalizeTitle', () => {
       track: 'COCKTAIL',
     });
   });
+
+  // Japanese titles commonly run "Track / Artist" and wrap a feat. credit in
+  // full-width parens glued directly to the name with no space —
+  // "好きだから。（feat.れん）/『ユイカ』【MV】". Without full-width paren support
+  // and a slash separator, the surviving "feat." became the ENTIRE lrclib
+  // query and a song that exists on lrclib was reported not-found.
+  it('splits on a slash and drops a full-width-parenthesised feat. credit', () => {
+    expect(normalizeTitle('好きだから。（feat.れん）/『ユイカ』【MV】')).toEqual({
+      artist: '好きだから。',
+      track: '『ユイカ』',
+    });
+  });
+
+  it('drops a full-width feat. credit with no space before the name', () => {
+    expect(normalizeTitle('Song（feat.Someone） - Artist')).toEqual({
+      artist: 'Song',
+      track: 'Artist',
+    });
+  });
+
+  it('does not split a slash with no adjacent whitespace, e.g. an artist name', () => {
+    expect(normalizeTitle('AC/DC - Thunderstruck')).toEqual({
+      artist: 'AC/DC',
+      track: 'Thunderstruck',
+    });
+  });
 });
 
 describe('normalizeTitleCandidates', () => {
