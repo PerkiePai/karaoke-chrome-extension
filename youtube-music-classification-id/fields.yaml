@@ -1,0 +1,99 @@
+fields:
+  basic_info:
+    - name: name
+      description: Tool/service/API name
+      detail_level: brief
+    - name: type
+      description: Classifier, identifier, metadata-resolver, or infrastructure/architecture constraint
+      detail_level: brief
+    - name: maintainer
+      description: Vendor, maintainer, or organization behind it
+      detail_level: brief
+
+  technical_approach:
+    - name: method
+      description: Fingerprinting, ML classification, metadata parsing/scraping, or embedding-based
+      detail_level: moderate
+    - name: required_input
+      description: Raw audio, video URL, title text, or page HTML
+      detail_level: brief
+    - name: minimum_clip_length
+      description: Shortest audio clip needed to get a result (fingerprinters ~3-12s, classifiers ~1s frames, metadata methods 0s)
+      detail_level: brief
+
+  accuracy_reliability:
+    - name: classification_or_hitrate
+      description: Known accuracy for classification, or identification hit-rate/catalog coverage
+      detail_level: detailed
+    - name: pitch_speed_cover_robustness
+      description: Survives nightcore, sped-up/slowed edits, pitch-shifted reuploads, live versions, and covers
+      detail_level: detailed
+    - name: catalog_language_bias
+      description: Per-source coverage broken out by region/genre (Western mainstream vs. K-pop/J-pop/C-pop vs. anime/VTuber vs. indie/unclaimed)
+      detail_level: detailed
+    - name: evaluation_dataset
+      description: What the accuracy claim is measured on (AudioSet, GTZAN music-speech, MUSAN, MagnaTagATune, MAEB, or a vendor's private set)
+      detail_level: moderate
+    - name: confidence_calibration
+      description: Does it emit a usable calibrated score, and can a threshold be tuned to trade false-positives against misses
+      detail_level: moderate
+
+  integration_feasibility:
+    - name: api_availability
+      description: Free tier/pricing, rate limits, keyed vs. keyless
+      detail_level: detailed
+    - name: chrome_extension_usability
+      description: CORS/host_permissions reachability directly from an extension, or backend-proxy required
+      detail_level: detailed
+    - name: audio_access_requirement
+      description: Whether raw audio is needed at all; if so, whether it requires a user gesture, mutes the tab, or breaks on DRM/age-restricted content
+      detail_level: detailed
+    - name: client_vs_server
+      description: Whether audio or the video ID leaves the user's machine (privacy posture, Web Store disclosure, offline capability)
+      detail_level: moderate
+    - name: bundle_weight_cold_start
+      description: Model/library download size and first-run latency vs. steady-state latency
+      detail_level: moderate
+    - name: breakage_risk
+      description: Historical breakage frequency for unofficial surfaces, whether an active community patches it, blast radius when it breaks
+      detail_level: moderate
+
+  latency:
+    - name: realtime_capability
+      description: Can this run fast enough for in-browser, near-instant use
+      detail_level: moderate
+
+  output:
+    - name: identification_fields
+      description: Title, artist, album, ISRC, confidence score
+      detail_level: detailed
+    - name: isrc_availability
+      description: Whether the method yields an ISRC (join key for downstream lookups)
+      detail_level: brief
+    - name: karaoke_specific_outputs
+      description: BPM, musical key, vocal/instrumental activity, word-level timing
+      detail_level: detailed
+
+  licensing_legal:
+    - name: tos_restrictions
+      description: Terms-of-service restrictions on scraping YouTube, reselling recognition results, or region-gating
+      detail_level: detailed
+    - name: risk_tolerance_note
+      description: Explicit note where official policy conflicts with widely-deployed unofficial practice (e.g. ytInitialData scraping, ytmusicapi, SongRec)
+      detail_level: moderate
+
+  pipeline_role:
+    - name: cascade_position
+      description: Gate (cheap, high-precision, always runs), enrichment, or fallback (expensive, runs on miss)
+      detail_level: moderate
+    - name: failure_mode
+      description: Fails silently with no answer, or risks a confident-but-wrong answer (visible product defect for karaoke overlay)
+      detail_level: moderate
+    - name: cost_model_at_scale
+      description: Per-query price and free-tier ceiling projected against realistic repeated-use-per-session load
+      detail_level: moderate
+    - name: geo_region_availability
+      description: Region-gating or region-degraded coverage (Spotify markets, NetEase/QQ outside China, ACRCloud data-center regions)
+      detail_level: brief
+
+uncertain: []
