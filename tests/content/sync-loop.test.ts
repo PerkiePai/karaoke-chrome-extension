@@ -13,12 +13,16 @@ function mockPanel(): PanelHandle {
   return {
     setHeader: vi.fn(),
     setStatus: vi.fn(),
+    setSearchStatus: vi.fn(),
+    showRetry: vi.fn(),
+    onRetry: vi.fn(),
     setLines: vi.fn(),
     onLineClick: vi.fn(),
     setActiveLine: vi.fn(),
     onManualScroll: vi.fn(),
     setOffsetControls: vi.fn(),
     onOffsetNudge: vi.fn(),
+    onOffsetSet: vi.fn(),
     setScrollTop: vi.fn(),
     getScrollTop: vi.fn(() => 0),
     getScrollExtentPx: vi.fn(() => 0),
@@ -35,6 +39,7 @@ function mockPanel(): PanelHandle {
     onCorrectRequest: vi.fn(),
     onSearch: vi.fn(),
     onCandidatePick: vi.fn(),
+    onResetMatch: vi.fn(),
     destroy: vi.fn(),
   };
 }

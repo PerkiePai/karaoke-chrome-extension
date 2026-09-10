@@ -114,6 +114,19 @@ export async function handleFetchLyrics(
     return { ok: false, reason: 'not-found', message: 'No lyrics found for this song.' };
   }
 
+  // Soft category gate: only for a video with no prior match at all. A
+  // previously cached or user-picked VideoMeta (handled above) always wins
+  // regardless of category — the gate must never make an existing correction
+  // disappear on reload.
+  if (storage && !existingMeta && request.skipSearchIfNonMusic) {
+    console.log(`[karaoke] category gate: videoId=${request.videoId} "${request.track}" → skipping search`);
+    return {
+      ok: false,
+      reason: 'category-gated',
+      message: "Doesn't look like a music video. Search below if it has lyrics.",
+    };
+  }
+
   const readings = [
     { artist: request.artist, track: request.track },
     ...(request.alternates ?? []),

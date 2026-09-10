@@ -1,35 +1,43 @@
 import { parseMusicAttribution, type MusicAttribution } from '../core/music-attribution';
+import { parseVideoCategory } from '../core/video-category';
 
 export type { MusicAttribution };
+
+export interface VideoPageSignals {
+  attribution: MusicAttribution | null;
+  category: string | null;
+}
 
 const FETCH_TIMEOUT_MS = 5000;
 
 /**
- * Fetches the video's own watch page and extracts its Music attribution, if
- * any. Runs from the content script (same-origin fetch to youtube.com, so no
- * extra host_permissions needed — see this plan's Global Constraints) rather
- * than the background, since it needs no privilege the page itself doesn't
- * already have.
+ * Fetches the video's own watch page once and extracts both the Music
+ * attribution panel and YouTube's own video category from it — one network
+ * round-trip serving two independent detection signals (see
+ * `core/music-attribution.ts` and `core/video-category.ts`). Runs from the
+ * content script (same-origin fetch to youtube.com, so no extra
+ * host_permissions needed) rather than the background, since it needs no
+ * privilege the page itself doesn't already have.
  *
- * Times out after FETCH_TIMEOUT_MS: this is a full page fetch (100KB+) for a
- * bonus signal most videos don't have, and must never stall the primary
+ * Times out after FETCH_TIMEOUT_MS: this is a full page fetch (100KB+) for
+ * bonus signals most videos don't need, and must never stall the primary
  * title-based lookup.
  */
-export async function fetchMusicAttribution(
+export async function fetchVideoPageSignals(
   videoId: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<MusicAttribution | null> {
+): Promise<VideoPageSignals> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const response = await fetchImpl(`https://www.youtube.com/watch?v=${videoId}`, {
       signal: controller.signal,
     });
-    if (!response.ok) return null;
+    if (!response.ok) return { attribution: null, category: null };
     const html = await response.text();
-    return parseMusicAttribution(html);
+    return { attribution: parseMusicAttribution(html), category: parseVideoCategory(html) };
   } catch {
-    return null;
+    return { attribution: null, category: null };
   } finally {
     clearTimeout(timeout);
   }

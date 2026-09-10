@@ -550,6 +550,61 @@ describe('mountPanel', () => {
       expect(cb).toHaveBeenCalledWith(record);
     });
 
+    it('showRetry(true) reveals the Retry button, showRetry(false) hides it', () => {
+      const panel = mountPanel(host);
+      const btn = () => shadowOf(host).querySelector<HTMLElement>('.kx-retry')!;
+      expect(btn().classList.contains('kx-hidden')).toBe(true);
+      panel.showRetry(true);
+      expect(btn().classList.contains('kx-hidden')).toBe(false);
+      panel.showRetry(false);
+      expect(btn().classList.contains('kx-hidden')).toBe(true);
+    });
+
+    it('onRetry fires when the Retry button is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onRetry(cb);
+      panel.showRetry(true);
+      shadowOf(host).querySelector<HTMLElement>('.kx-retry')!.click();
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('onResetMatch fires when the search overlay\'s Reset button is clicked', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onResetMatch(cb);
+      panel.enterSearchMode('test');
+      shadowOf(host).querySelector<HTMLElement>('.kx-search-reset')!.click();
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('showCandidates marks a candidate with real synced timestamps as synced', () => {
+      const panel = mountPanel(host);
+      const record: LrclibRecord = { id: 1, trackName: 'Wonderwall', artistName: 'Oasis', albumName: null, duration: 258, instrumental: false, plainLyrics: null, syncedLyrics: '[00:01.00]Today is gonna be the day' };
+      panel.showCandidates([record]);
+      const badge = shadowOf(host).querySelector<HTMLElement>('.kx-candidate-badge')!;
+      expect(badge.textContent).toBe('synced');
+      expect(badge.classList.contains('kx-candidate-badge-synced')).toBe(true);
+    });
+
+    it('showCandidates marks a candidate with no synced lyrics as unsynced', () => {
+      const panel = mountPanel(host);
+      const record: LrclibRecord = { id: 1, trackName: 'Wonderwall', artistName: 'Oasis', albumName: null, duration: 258, instrumental: false, plainLyrics: 'Today is gonna be the day', syncedLyrics: null };
+      panel.showCandidates([record]);
+      const badge = shadowOf(host).querySelector<HTMLElement>('.kx-candidate-badge')!;
+      expect(badge.textContent).toBe('no timestamps');
+      expect(badge.classList.contains('kx-candidate-badge-plain')).toBe(true);
+    });
+
+    it('showCandidates marks a candidate whose syncedLyrics has no real timed line as unsynced', () => {
+      const panel = mountPanel(host);
+      // Metadata-only LRC body — parses to zero lines, same edge case planRender guards against.
+      const record: LrclibRecord = { id: 1, trackName: 'Wonderwall', artistName: 'Oasis', albumName: null, duration: 258, instrumental: false, plainLyrics: null, syncedLyrics: '[ar:Oasis]' };
+      panel.showCandidates([record]);
+      const badge = shadowOf(host).querySelector<HTMLElement>('.kx-candidate-badge')!;
+      expect(badge.classList.contains('kx-candidate-badge-plain')).toBe(true);
+    });
+
     it('exitSearchMode hides both the form and the candidate list', () => {
       const panel = mountPanel(host);
       panel.enterSearchMode('test');

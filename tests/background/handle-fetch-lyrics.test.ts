@@ -266,3 +266,70 @@ describe('handleFetchLyrics — cache behavior', () => {
     expect(result).toMatchObject({ ok: true, lrclibId: 99, scrollSpeed: 1 });
   });
 });
+
+describe('handleFetchLyrics — category gate', () => {
+  const storage = (): StorageLike => {
+    const store = new Map<string, unknown>();
+    return {
+      async get(keys) {
+        const r: Record<string, unknown> = {};
+        for (const k of keys) { if (store.has(k)) r[k] = store.get(k); }
+        return r;
+      },
+      async set(items) { for (const [k, v] of Object.entries(items)) store.set(k, v); },
+      async remove(keys) { for (const k of keys) store.delete(k); },
+    };
+  };
+
+  it('skips the search and reports category-gated on a first visit with the flag set', async () => {
+    const s = storage();
+    let searchCalled = false;
+    const result = await handleFetchLyrics(
+      { ...request, skipSearchIfNonMusic: true },
+      async () => { searchCalled = true; return [wonderwall]; },
+      s,
+    );
+    expect(searchCalled).toBe(false);
+    expect(result).toEqual({
+      ok: false,
+      reason: 'category-gated',
+      message: "Doesn't look like a music video. Search below if it has lyrics.",
+    });
+  });
+
+  it('does not gate when no storage is provided (flag is ignored without persistence)', async () => {
+    let searchCalled = false;
+    const result = await handleFetchLyrics(
+      { ...request, skipSearchIfNonMusic: true },
+      async () => { searchCalled = true; return [wonderwall]; },
+    );
+    expect(searchCalled).toBe(true);
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+  });
+
+  it('does not gate a video that already has a cached match, even with the flag set', async () => {
+    const s = storage();
+    let calls = 0;
+    await handleFetchLyrics(request, async () => { calls++; return [wonderwall]; }, s);
+    await writeVideoMeta(s, request.videoId, { lrclibId: 99, offsetSec: 0 });
+    const result = await handleFetchLyrics(
+      { ...request, skipSearchIfNonMusic: true },
+      async () => { calls++; return [wonderwall]; },
+      s,
+    );
+    expect(calls).toBe(1); // second call served from cache, never re-searched or gated
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+  });
+
+  it('does not gate when the flag is absent — searches normally', async () => {
+    const s = storage();
+    let searchCalled = false;
+    const result = await handleFetchLyrics(
+      request,
+      async () => { searchCalled = true; return [wonderwall]; },
+      s,
+    );
+    expect(searchCalled).toBe(true);
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+  });
+});

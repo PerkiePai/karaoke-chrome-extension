@@ -4,7 +4,8 @@ import { decideReconcile } from './reconcile';
 import { planRender } from './render-plan';
 import { startSyncLoop, type SyncLoopHandle } from './sync-loop';
 import { startAutoScrollLoop, type AutoScrollLoopHandle } from './auto-scroll-loop';
-import { fetchMusicAttribution } from './music-attribution';
+import { fetchVideoPageSignals } from './music-attribution';
+import { isConfidentlyNonMusic } from '../core/video-category';
 import { parseVideoId } from '../core/youtube-url';
 import { normalizeTitleCandidates } from '../core/title-normalizer';
 import type { LyricLine } from '../core/types';
@@ -15,6 +16,8 @@ import type {
   SearchCandidatesResponse,
   PickCandidateRequest,
   PickCandidateResponse,
+  ResetMatchRequest,
+  ResetMatchResponse,
 } from '../messaging/types';
 
 // Scoped to ytd-watch-flexy: YouTube's home/browse page (ytd-browse) also has
@@ -362,6 +365,38 @@ async function activate(videoId: string): Promise<void> {
     }
   });
 
+  panel.onRetry(() => {
+    const videoId = currentVideoId;
+    if (videoId === null) return;
+    panel!.showRetry(false);
+    generation += 1;
+    const freshGen = generation;
+    void load(videoId, freshGen).catch((error) => {
+      console.error('[karaoke] retry load failed', error);
+    });
+  });
+
+  panel.onResetMatch(() => {
+    const videoId = currentVideoId;
+    if (videoId === null) return;
+    panel!.exitSearchMode();
+    void chrome.runtime
+      .sendMessage<ResetMatchRequest, ResetMatchResponse>({ type: 'RESET_MATCH', videoId })
+      .then(() => {
+        // The user may have navigated away while the message was in flight.
+        if (videoId !== currentVideoId) return;
+        // Force load() to accept the fresh (zeroed) offset/scrollSpeed from
+        // the re-search response instead of carrying over the values from
+        // the pick being undone — mirrors the reload path in reconcile().
+        currentLrclibId = null;
+        generation += 1;
+        const freshGen = generation;
+        void load(videoId, freshGen).catch((error) => {
+          console.error('[karaoke] reset-match reload failed', error);
+        });
+      });
+  });
+
   await load(videoId, gen);
 }
 
@@ -369,9 +404,9 @@ async function activate(videoId: string): Promise<void> {
 async function load(videoId: string, gen: number): Promise<void> {
   isLoading = true;
   try {
-    const [song, attribution] = await Promise.all([
+    const [song, { attribution, category }] = await Promise.all([
       waitForSong(videoId),
-      fetchMusicAttribution(videoId),
+      fetchVideoPageSignals(videoId),
     ]);
     if (gen !== generation || !panel) return;
 
@@ -406,6 +441,14 @@ async function load(videoId: string, gen: number): Promise<void> {
     const primary = readings[0]!;
     panel.setHeader(primary.track, primary.artist ?? 'unknown artist');
 
+    // Soft category gate (Sprint 5): only a signal, never a hard block. A
+    // Music attribution panel always overrides it; a video with a prior
+    // match is never affected (handled in handleFetchLyrics, not here).
+    const skipSearchIfNonMusic = !attribution && isConfidentlyNonMusic(category);
+    if (skipSearchIfNonMusic) {
+      console.log(`[karaoke] category gate: "${song.rawTitle}" is category=${category}`);
+    }
+
     const request: FetchLyricsRequest = {
       type: 'FETCH_LYRICS',
       videoId,
@@ -413,6 +456,7 @@ async function load(videoId: string, gen: number): Promise<void> {
       track: primary.track,
       durationSec: song.durationSec,
       alternates: readings.slice(1),
+      skipSearchIfNonMusic,
     };
 
     let response: FetchLyricsResponse;
@@ -436,7 +480,11 @@ async function load(videoId: string, gen: number): Promise<void> {
       panel.setOffsetControls(false);
       panel.setSpeedControls(false);
       currentSyncedLines = [];
-      if (response.reason === 'not-found') panel.showCorrectBar(true);
+      if (response.reason === 'not-found' || response.reason === 'category-gated') panel.showCorrectBar(true);
+      // Retry only makes sense for a transient failure — repeating the same
+      // lookup after "not found" or a category gate would just fail again
+      // the same way; those need a different search, not a repeat.
+      panel.showRetry(response.reason === 'network' || response.reason === 'rate-limited');
       return;
     }
 
@@ -462,6 +510,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     currentRecord = response.record;
     panel.setHeader(record.trackName, record.artistName);
     panel.showCorrectBar(true);
+    panel.showRetry(false);
 
     const plan = planRender(record);
 

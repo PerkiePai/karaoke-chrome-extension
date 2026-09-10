@@ -1,12 +1,14 @@
 import { searchLyrics } from '../lrclib/client';
 import { handleFetchLyrics } from './handle-fetch-lyrics';
 import { handleSearchCandidates } from './handle-search-candidates';
-import { writeLyricsCache, clearNotFoundCache, writeUserPicked, type StorageLike } from './storage';
+import { writeLyricsCache, clearNotFoundCache, writeUserPicked, clearUserPick, type StorageLike } from './storage';
 import type {
   FetchLyricsRequest,
   SearchCandidatesRequest,
   PickCandidateRequest,
   PickCandidateResponse,
+  ResetMatchRequest,
+  ResetMatchResponse,
 } from '../messaging/types';
 
 console.log('[karaoke] service worker started');
@@ -49,6 +51,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       writeUserPicked(storage, req.videoId),
     ]).then(() => {
       sendResponse({ ok: true } satisfies PickCandidateResponse);
+    });
+    return true;
+  }
+
+  if (message?.type === 'RESET_MATCH') {
+    const req = message as ResetMatchRequest;
+    void clearUserPick(storage, req.videoId).then(() => {
+      sendResponse({ ok: true } satisfies ResetMatchResponse);
     });
     return true;
   }

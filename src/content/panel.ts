@@ -1,4 +1,5 @@
 import { PANEL_STYLES } from './panel-styles';
+import { parseLrc } from '../core/lrc-parser';
 import type { LyricLine, LrclibRecord } from '../core/types';
 
 export const PANEL_HOST_ID = 'karaoke-lyrics-panel-host';
@@ -16,6 +17,13 @@ export interface PanelHandle {
   setStatus(message: string): void;
   /** Shows a status message inside the search overlay (yellow, no layout shift). */
   setSearchStatus(message: string): void;
+  /** Shows or hides a "Retry" button below the status message — used for
+   *  transient failures (network down, rate-limited) where repeating the
+   *  same lookup might succeed, as opposed to not-found/category-gated
+   *  where it never would. */
+  showRetry(visible: boolean): void;
+  /** Fires when "Retry" is clicked. */
+  onRetry(callback: () => void): void;
   /** `synced=false` (the default is true) renders every line in the same
    *  bold/white style as an active line — used for plain-text lyrics that
    *  have no timestamps to highlight against. */
@@ -83,6 +91,9 @@ export interface PanelHandle {
   onSearch(callback: (query: string) => void): void;
   /** Fires when user clicks a candidate. */
   onCandidatePick(callback: (record: LrclibRecord) => void): void;
+  /** Fires when the user clicks "Reset" in the search overlay — forgets any
+   *  manual correction and reverts this video to the auto-detected match. */
+  onResetMatch(callback: () => void): void;
   destroy(): void;
 }
 
@@ -131,12 +142,14 @@ export function mountPanel(container: HTMLElement): PanelHandle {
           <form class="kx-search-form" autocomplete="off">
             <input class="kx-search-input" type="text" placeholder="Artist and song title…">
             <button type="submit" class="kx-search-btn">Search</button>
+            <button type="button" class="kx-search-reset" title="Forget my correction and use the auto-detected match">Reset</button>
             <button type="button" class="kx-search-close" title="Close">✕</button>
           </form>
           <div class="kx-search-status"></div>
           <ol class="kx-candidates kx-hidden"></ol>
         </div>
         <div class="kx-status"></div>
+        <button class="kx-retry kx-hidden">Retry</button>
         <ol class="kx-lines"></ol>
       </div>
     </div>
@@ -276,9 +289,19 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   let correctRequestListener: (() => void) | null = null;
   let searchListener: ((query: string) => void) | null = null;
   let candidatePickListener: ((record: LrclibRecord) => void) | null = null;
+  let resetMatchListener: (() => void) | null = null;
+  let retryListener: (() => void) | null = null;
 
   find<HTMLElement>('.kx-not-this').addEventListener('click', () => {
     correctRequestListener?.();
+  });
+
+  find<HTMLElement>('.kx-search-reset').addEventListener('click', () => {
+    resetMatchListener?.();
+  });
+
+  find<HTMLElement>('.kx-retry').addEventListener('click', () => {
+    retryListener?.();
   });
 
   const searchInput = find<HTMLInputElement>('.kx-search-input');
@@ -338,6 +361,12 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       const el = find<HTMLElement>('.kx-search-status');
       el.textContent = message;
       el.style.display = message ? 'block' : 'none';
+    },
+    showRetry(visible) {
+      find<HTMLElement>('.kx-retry').classList.toggle('kx-hidden', !visible);
+    },
+    onRetry(callback) {
+      retryListener = callback;
     },
     setLines(lines, synced = true) {
       // textContent per line: lyrics are untrusted third-party content.
@@ -448,13 +477,25 @@ export function mountPanel(container: HTMLElement): PanelHandle {
         ...candidates.map((record) => {
           const li = document.createElement('li');
           li.className = 'kx-candidate';
+          const head = document.createElement('div');
+          head.className = 'kx-candidate-head';
           const title = document.createElement('span');
           title.className = 'kx-candidate-title';
           title.textContent = record.trackName;
+          // Same "does it actually parse to a timed line" check planRender
+          // uses, not a bare truthiness check on syncedLyrics — an LRC body
+          // of only metadata tags carries no real timing either.
+          const synced = parseLrc(record.syncedLyrics ?? '').length > 0;
+          const badge = document.createElement('span');
+          badge.className = synced
+            ? 'kx-candidate-badge kx-candidate-badge-synced'
+            : 'kx-candidate-badge kx-candidate-badge-plain';
+          badge.textContent = synced ? 'synced' : 'no timestamps';
+          head.append(title, badge);
           const sub = document.createElement('span');
           sub.className = 'kx-candidate-sub';
           sub.textContent = record.artistName;
-          li.append(title, sub);
+          li.append(head, sub);
           li.addEventListener('click', () => candidatePickListener?.(record));
           return li;
         }),
@@ -475,6 +516,9 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     onCandidatePick(callback) {
       candidatePickListener = callback;
+    },
+    onResetMatch(callback) {
+      resetMatchListener = callback;
     },
     destroy() {
       stopScrollAnim();

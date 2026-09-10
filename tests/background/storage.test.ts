@@ -4,6 +4,9 @@ import {
   writeVideoMeta,
   readLyricsCache,
   writeLyricsCache,
+  isUserPicked,
+  writeUserPicked,
+  clearUserPick,
   type StorageLike,
 } from '../../src/background/storage';
 import type { LrclibRecord } from '../../src/core/types';
@@ -112,5 +115,35 @@ describe('readLyricsCache / writeLyricsCache', () => {
     expect(await readLyricsCache(s, 2)).toBeNull();
     expect(await readLyricsCache(s, 1)).toEqual(r(1));
     expect(await readLyricsCache(s, 3)).toEqual(r(3));
+  });
+});
+
+describe('isUserPicked / writeUserPicked / clearUserPick', () => {
+  it('is false when nothing has been picked for that videoId', async () => {
+    const s = mockStorage();
+    expect(await isUserPicked(s, 'abc123')).toBe(false);
+  });
+
+  it('is true after writeUserPicked', async () => {
+    const s = mockStorage();
+    await writeUserPicked(s, 'abc123');
+    expect(await isUserPicked(s, 'abc123')).toBe(true);
+  });
+
+  it('clearUserPick removes both the pick flag and the VideoMeta pointer', async () => {
+    const s = mockStorage();
+    await writeUserPicked(s, 'abc123');
+    await writeVideoMeta(s, 'abc123', { lrclibId: 99, offsetSec: 1.5 });
+    await clearUserPick(s, 'abc123');
+    expect(await isUserPicked(s, 'abc123')).toBe(false);
+    expect(await readVideoMeta(s, 'abc123')).toBeNull();
+  });
+
+  it('clearUserPick does not affect other videoIds', async () => {
+    const s = mockStorage();
+    await writeUserPicked(s, 'abc123');
+    await writeVideoMeta(s, 'other456', { lrclibId: 1, offsetSec: 0 });
+    await clearUserPick(s, 'abc123');
+    expect(await readVideoMeta(s, 'other456')).toEqual({ lrclibId: 1, offsetSec: 0 });
   });
 });
