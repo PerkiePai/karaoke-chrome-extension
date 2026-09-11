@@ -266,13 +266,13 @@ describe('mountPanel', () => {
       panel.setOffsetControls(true, 0.5);
       const el = shadowOf(host).querySelector<HTMLElement>('.kx-offset')!;
       expect(el.classList.contains('kx-hidden')).toBe(false);
-      expect(shadowOf(host).querySelector('.kx-offset-value')!.textContent).toBe('+0.50s');
+      expect(shadowOf(host).querySelector<HTMLInputElement>('.kx-offset-value')!.value).toBe('+0.50s');
     });
 
     it('formats a negative offset with a minus sign', () => {
       const panel = mountPanel(host);
       panel.setOffsetControls(true, -0.25);
-      expect(shadowOf(host).querySelector('.kx-offset-value')!.textContent).toBe('-0.25s');
+      expect(shadowOf(host).querySelector<HTMLInputElement>('.kx-offset-value')!.value).toBe('-0.25s');
     });
 
     it('hides the bar again when called with visible=false', () => {
@@ -488,15 +488,15 @@ describe('mountPanel', () => {
     it('hides the correct-bar, search form, and candidate list by default', () => {
       mountPanel(host);
       const shadow = shadowOf(host);
-      expect(shadow.querySelector<HTMLElement>('.kx-correct-bar')!.classList.contains('kx-hidden')).toBe(true);
-      expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(true);
+      expect(shadow.querySelector<HTMLElement>('.kx-not-this')!.classList.contains('kx-hidden')).toBe(true);
+      expect(shadow.querySelector<HTMLElement>('.kx-search-overlay')!.classList.contains('kx-hidden')).toBe(true);
       expect(shadow.querySelector<HTMLElement>('.kx-candidates')!.classList.contains('kx-hidden')).toBe(true);
     });
 
     it('showCorrectBar(true) reveals the "Not this one?" button', () => {
       const panel = mountPanel(host);
       panel.showCorrectBar(true);
-      expect(shadowOf(host).querySelector<HTMLElement>('.kx-correct-bar')!.classList.contains('kx-hidden')).toBe(false);
+      expect(shadowOf(host).querySelector<HTMLElement>('.kx-not-this')!.classList.contains('kx-hidden')).toBe(false);
     });
 
     it('onCorrectRequest fires when "Not this one?" is clicked', () => {
@@ -537,7 +537,7 @@ describe('mountPanel', () => {
       panel.showCandidates(records);
       const shadow = shadowOf(host);
       expect(shadow.querySelectorAll('.kx-candidate')).toHaveLength(2);
-      expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(true);
+      expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(true); // showCandidates hides the form
     });
 
     it('onCandidatePick fires with the record when a candidate is clicked', () => {
@@ -610,7 +610,7 @@ describe('mountPanel', () => {
       panel.enterSearchMode('test');
       panel.exitSearchMode();
       const shadow = shadowOf(host);
-      expect(shadow.querySelector<HTMLElement>('.kx-search-form')!.classList.contains('kx-hidden')).toBe(true);
+      expect(shadow.querySelector<HTMLElement>('.kx-search-overlay')!.classList.contains('kx-hidden')).toBe(true);
       expect(shadow.querySelector<HTMLElement>('.kx-candidates')!.classList.contains('kx-hidden')).toBe(true);
     });
   });

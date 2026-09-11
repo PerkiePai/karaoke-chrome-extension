@@ -465,6 +465,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     enterSearchMode(query) {
       searchInput.value = query;
       find<HTMLElement>('.kx-search-overlay').classList.remove('kx-hidden');
+      find<HTMLElement>('.kx-search-form').classList.remove('kx-hidden');
       find<HTMLElement>('.kx-candidates').classList.add('kx-hidden');
     },
     showCandidates(candidates) {
@@ -473,6 +474,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
         listEl.classList.add('kx-hidden');
         return;
       }
+      find<HTMLElement>('.kx-search-form').classList.add('kx-hidden');
       listEl.replaceChildren(
         ...candidates.map((record) => {
           const li = document.createElement('li');
