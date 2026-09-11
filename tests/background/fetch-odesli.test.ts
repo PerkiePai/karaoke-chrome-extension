@@ -69,7 +69,7 @@ describe('fetchOdesli', () => {
 
   it('returns null on malformed JSON', async () => {
     const badJson: typeof fetch = async () =>
-      ({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad'); } }) as Response;
+      ({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad'); } }) as unknown as Response;
     expect(await fetchOdesli('abc', badJson)).toBeNull();
   });
 });

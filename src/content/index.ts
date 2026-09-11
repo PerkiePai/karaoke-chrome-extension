@@ -404,7 +404,7 @@ async function activate(videoId: string): Promise<void> {
 async function load(videoId: string, gen: number): Promise<void> {
   isLoading = true;
   try {
-    const [song, { attribution, category }] = await Promise.all([
+    const [song, { attribution, artTrack, category }] = await Promise.all([
       waitForSong(videoId),
       fetchVideoPageSignals(videoId),
     ]);
@@ -435,8 +435,15 @@ async function load(videoId: string, gen: number): Promise<void> {
     if (attribution) {
       console.log(`[karaoke] using Music attribution: "${attribution.title}" / "${attribution.artist}"`);
     }
-    const readings = attribution
-      ? [{ artist: attribution.artist, track: attribution.title }, ...titleReadings]
+    if (artTrack) {
+      console.log(`[karaoke] using Art Track description: "${artTrack.title}" / "${artTrack.artist}"`);
+    }
+    const extraReadings = [
+      ...(attribution ? [{ artist: attribution.artist, track: attribution.title }] : []),
+      ...(artTrack ? [{ artist: artTrack.artist, track: artTrack.title }] : []),
+    ];
+    const readings = extraReadings.length > 0
+      ? [...extraReadings, ...titleReadings]
       : titleReadings;
     const primary = readings[0]!;
     panel.setHeader(primary.track, primary.artist ?? 'unknown artist');
@@ -444,7 +451,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     // Soft category gate (Sprint 5): only a signal, never a hard block. A
     // Music attribution panel always overrides it; a video with a prior
     // match is never affected (handled in handleFetchLyrics, not here).
-    const skipSearchIfNonMusic = !attribution && isConfidentlyNonMusic(category);
+    const skipSearchIfNonMusic = !attribution && !artTrack && isConfidentlyNonMusic(category);
     if (skipSearchIfNonMusic) {
       console.log(`[karaoke] category gate: "${song.rawTitle}" is category=${category}`);
     }
