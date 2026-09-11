@@ -1,6 +1,5 @@
 import { searchLyrics } from '../lrclib/client';
 import { handleFetchLyrics } from './handle-fetch-lyrics';
-import { fetchOdesli } from './fetch-odesli';
 import { handleSearchCandidates } from './handle-search-candidates';
 import { writeLyricsCache, clearNotFoundCache, writeUserPicked, clearUserPick, type StorageLike } from './storage';
 import type {
@@ -30,7 +29,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       message as FetchLyricsRequest,
       (query) => searchLyrics(query),
       storage,
-      fetchOdesli,
     ).then(sendResponse);
     return true;
   }

@@ -19,7 +19,6 @@ import {
   isUserPicked,
   type StorageLike,
 } from './storage';
-import { fetchOdesli, type OdesliResult } from './fetch-odesli';
 import type { LrclibRecord } from '../core/types';
 import type { FetchLyricsRequest, FetchLyricsResponse } from '../messaging/types';
 
@@ -34,9 +33,6 @@ export async function handleFetchLyrics(
   request: FetchLyricsRequest,
   search: (query: string) => Promise<LrclibRecord[]>,
   storage?: StorageLike,
-  // Default is a noop so existing callers and tests need no changes.
-  // Production wires in the real fetchOdesli via src/background/index.ts.
-  fetchOdesliImpl: (videoId: string) => Promise<OdesliResult | null> = async () => null,
 ): Promise<FetchLyricsResponse> {
   const existingMeta = storage ? await readVideoMeta(storage, request.videoId) : null;
 
@@ -131,31 +127,12 @@ export async function handleFetchLyrics(
     };
   }
 
-  // Try Odesli for a cleaner artist/track before falling back to the
-  // title-parsed readings. Returns null on any failure — never blocks.
-  const odesliResult = await fetchOdesliImpl(request.videoId);
-  if (odesliResult) {
-    console.log(
-      `[karaoke] odesli OK videoId=${request.videoId}`,
-      `"${odesliResult.title}" / "${odesliResult.artistName}"`,
-    );
-  }
-
-  const odesliReading = odesliResult
-    ? { artist: odesliResult.artistName, track: odesliResult.title }
-    : null;
-
   const readings = [
-    ...(odesliReading ? [odesliReading] : []),
     { artist: request.artist, track: request.track },
     ...(request.alternates ?? []),
   ];
 
-  // Use Odesli's cleaner metadata for the LRCLIB query when available —
-  // the title-parsed artist/track may be garbled or incorrectly split.
-  const queryArtist = odesliReading?.artist ?? request.artist;
-  const queryTrack = odesliReading?.track ?? request.track;
-  const query = buildSearchQuery(queryArtist, queryTrack);
+  const query = buildSearchQuery(request.artist, request.track);
 
   let candidates: LrclibRecord[];
   try {
