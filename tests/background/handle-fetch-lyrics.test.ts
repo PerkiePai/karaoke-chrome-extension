@@ -267,6 +267,95 @@ describe('handleFetchLyrics — cache behavior', () => {
   });
 });
 
+describe('handleFetchLyrics — Odesli integration', () => {
+  const rickRoll: LrclibRecord = {
+    id: 77,
+    trackName: 'Never Gonna Give You Up',
+    artistName: 'Rick Astley',
+    albumName: null,
+    duration: 212,
+    instrumental: false,
+    plainLyrics: 'Never gonna give you up',
+    syncedLyrics: '[00:42.00]Never gonna give you up',
+  };
+
+  it('uses the Odesli query when Odesli succeeds', async () => {
+    const queries: string[] = [];
+    const odesli = async () => ({ title: 'Never Gonna Give You Up', artistName: 'Rick Astley' });
+    await handleFetchLyrics(
+      { type: 'FETCH_LYRICS', videoId: 'dQw4w9WgXcQ', artist: null, track: 'dQw4w9WgXcQ', durationSec: null },
+      async (q) => { queries.push(q); return [rickRoll]; },
+      undefined,
+      odesli,
+    );
+    expect(queries[0]).toContain('Rick Astley');
+    expect(queries[0]).toContain('Never Gonna Give You Up');
+  });
+
+  it('prepends Odesli reading so it scores ahead of title-parsed alternates', async () => {
+    const odesli = async () => ({ title: 'Never Gonna Give You Up', artistName: 'Rick Astley' });
+    const result = await handleFetchLyrics(
+      {
+        type: 'FETCH_LYRICS',
+        videoId: 'dQw4w9WgXcQ',
+        artist: null,
+        track: 'garbled title noise [Official]',
+        durationSec: null,
+      },
+      async () => [rickRoll],
+      undefined,
+      odesli,
+    );
+    expect(result).toMatchObject({ ok: true, record: rickRoll });
+  });
+
+  it('falls through to title-based flow when Odesli returns null', async () => {
+    const queries: string[] = [];
+    const result = await handleFetchLyrics(
+      request,
+      async (q) => { queries.push(q); return [wonderwall]; },
+      undefined,
+      async () => null,
+    );
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+    expect(queries[0]).toBe('Oasis Wonderwall');
+  });
+
+  it('does not call Odesli when there is a valid cache hit', async () => {
+    const store = new Map<string, unknown>();
+    const s: StorageLike = {
+      async get(keys) { const r: Record<string, unknown> = {}; for (const k of keys) { if (store.has(k)) r[k] = store.get(k); } return r; },
+      async set(items) { for (const [k, v] of Object.entries(items)) store.set(k, v); },
+      async remove(keys) { for (const k of keys) store.delete(k); },
+    };
+    // Seed cache
+    await s.set({ 'vm:abc123': { lrclibId: 99, offsetSec: 0, scrollSpeed: 1 } });
+    await s.set({ 'lc:99': wonderwall });
+
+    let odesliCalled = false;
+    const result = await handleFetchLyrics(
+      request,
+      async () => [],
+      s,
+      async () => { odesliCalled = true; return null; },
+    );
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+    expect(odesliCalled).toBe(false);
+  });
+
+  it('still issues exactly one LRCLIB search even when Odesli succeeds', async () => {
+    let calls = 0;
+    const odesli = async () => ({ title: 'Never Gonna Give You Up', artistName: 'Rick Astley' });
+    await handleFetchLyrics(
+      { type: 'FETCH_LYRICS', videoId: 'dQw4w9WgXcQ', artist: null, track: 'garbled', durationSec: null },
+      async () => { calls++; return [rickRoll]; },
+      undefined,
+      odesli,
+    );
+    expect(calls).toBe(1);
+  });
+});
+
 describe('handleFetchLyrics — category gate', () => {
   const storage = (): StorageLike => {
     const store = new Map<string, unknown>();
