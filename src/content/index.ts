@@ -404,7 +404,7 @@ async function activate(videoId: string): Promise<void> {
 async function load(videoId: string, gen: number): Promise<void> {
   isLoading = true;
   try {
-    const [song, { attribution, artTrack, category }] = await Promise.all([
+    const [song, { attribution, artTrack, category, hasCopyrightNotice, hasMusicKeyword }] = await Promise.all([
       waitForSong(videoId),
       fetchVideoPageSignals(videoId),
     ]);
@@ -451,7 +451,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     // Soft category gate (Sprint 5): only a signal, never a hard block. A
     // Music attribution panel always overrides it; a video with a prior
     // match is never affected (handled in handleFetchLyrics, not here).
-    const skipSearchIfNonMusic = !attribution && !artTrack && isConfidentlyNonMusic(category);
+    const skipSearchIfNonMusic = !attribution && !artTrack && !hasCopyrightNotice && !hasMusicKeyword && isConfidentlyNonMusic(category);
     if (skipSearchIfNonMusic) {
       console.log(`[karaoke] category gate: "${song.rawTitle}" is category=${category}`);
     }

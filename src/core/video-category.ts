@@ -1,5 +1,48 @@
 const YT_INITIAL_PLAYER_RESPONSE_PATTERN = /var ytInitialPlayerResponse\s*=\s*(\{.*?\});/s;
 
+const MUSIC_KEYWORDS = new Set([
+  'music', 'song', 'lyrics', 'mv', 'ost', 'soundtrack', 'official audio',
+]);
+
+export interface MusicSignals {
+  hasCopyrightNotice: boolean;
+  hasMusicKeyword: boolean;
+}
+
+/**
+ * Extracts positive music evidence from ytInitialPlayerResponse.videoDetails:
+ *   hasCopyrightNotice — ℗ symbol in shortDescription (sound recording copyright;
+ *     only appears on officially distributed tracks, never on gaming/vlog content)
+ *   hasMusicKeyword    — at least one music keyword in the videoDetails.keywords
+ *     array that label-uploaded videos consistently include ("music", "lyrics", etc.)
+ *
+ * Both signals are false-positive-safe: ℗ and "music" keywords don't appear on
+ * non-music content. They're used to override the category denylist when a video
+ * is in "Entertainment" or has no category but is clearly a music release.
+ */
+export function parseMusicSignals(html: string): MusicSignals {
+  const match = html.match(YT_INITIAL_PLAYER_RESPONSE_PATTERN);
+  if (!match) return { hasCopyrightNotice: false, hasMusicKeyword: false };
+
+  let data: unknown;
+  try { data = JSON.parse(match[1]!); } catch { return { hasCopyrightNotice: false, hasMusicKeyword: false }; }
+
+  if (typeof data !== 'object' || data === null) return { hasCopyrightNotice: false, hasMusicKeyword: false };
+  const videoDetails = (data as Record<string, unknown>)['videoDetails'];
+  if (typeof videoDetails !== 'object' || videoDetails === null) return { hasCopyrightNotice: false, hasMusicKeyword: false };
+  const vd = videoDetails as Record<string, unknown>;
+
+  const desc = vd['shortDescription'];
+  const hasCopyrightNotice = typeof desc === 'string' && desc.includes('℗');
+
+  const keywords = vd['keywords'];
+  const hasMusicKeyword = Array.isArray(keywords) && keywords.some(
+    (k) => typeof k === 'string' && MUSIC_KEYWORDS.has(k.toLowerCase()),
+  );
+
+  return { hasCopyrightNotice, hasMusicKeyword };
+}
+
 /**
  * YouTube's own category taxonomy, restricted to the categories where a
  * karaoke lyrics panel is implausible enough to skip auto-search by default.

@@ -4,7 +4,7 @@ import {
   type MusicAttribution,
   type ArtTrackAttribution,
 } from '../core/music-attribution';
-import { parseVideoCategory } from '../core/video-category';
+import { parseVideoCategory, parseMusicSignals } from '../core/video-category';
 
 export type { MusicAttribution, ArtTrackAttribution };
 
@@ -12,6 +12,8 @@ export interface VideoPageSignals {
   attribution: MusicAttribution | null;
   artTrack: ArtTrackAttribution | null;
   category: string | null;
+  hasCopyrightNotice: boolean;
+  hasMusicKeyword: boolean;
 }
 
 const FETCH_TIMEOUT_MS = 5000;
@@ -39,15 +41,18 @@ export async function fetchVideoPageSignals(
     const response = await fetchImpl(`https://www.youtube.com/watch?v=${videoId}`, {
       signal: controller.signal,
     });
-    if (!response.ok) return { attribution: null, artTrack: null, category: null };
+    if (!response.ok) return { attribution: null, artTrack: null, category: null, hasCopyrightNotice: false, hasMusicKeyword: false };
     const html = await response.text();
+    const { hasCopyrightNotice, hasMusicKeyword } = parseMusicSignals(html);
     return {
       attribution: parseMusicAttribution(html),
       artTrack: parseArtTrackDescription(html),
       category: parseVideoCategory(html),
+      hasCopyrightNotice,
+      hasMusicKeyword,
     };
   } catch {
-    return { attribution: null, artTrack: null, category: null };
+    return { attribution: null, artTrack: null, category: null, hasCopyrightNotice: false, hasMusicKeyword: false };
   } finally {
     clearTimeout(timeout);
   }
