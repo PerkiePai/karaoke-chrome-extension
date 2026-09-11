@@ -4,7 +4,15 @@ export interface MusicAttribution {
   album: string | null;
 }
 
+export interface ArtTrackAttribution {
+  title: string;
+  artist: string;
+}
+
 const YT_INITIAL_DATA_PATTERN = /var ytInitialData\s*=\s*(\{.*?\});/s;
+const YT_INITIAL_PLAYER_RESPONSE_PATTERN = /var ytInitialPlayerResponse\s*=\s*(\{.*?\});/s;
+// Middle dot · (U+00B7) separates track · artist in Art Track descriptions.
+const ART_TRACK_PATTERN = /^Provided to YouTube by .+?\n\n(.+?) · (.+?)\n/m;
 const STRUCTURED_DESCRIPTION_PANEL_ID = 'engagement-panel-structured-description';
 
 /**
@@ -52,6 +60,45 @@ export function parseMusicAttribution(html: string): MusicAttribution | null {
       : null;
 
   return { title, artist, album };
+}
+
+/**
+ * Extracts the "Provided to YouTube by" Art Track description block from a
+ * YouTube watch page's raw HTML, if present. Only auto-generated label/
+ * distributor uploads carry this block — most videos won't, so null is the
+ * common case. The block's `Track · Artist` line uses a middle dot (U+00B7)
+ * as a stable, machine-readable separator distinct from the ASCII hyphen used
+ * in free-form titles.
+ *
+ * Reads `ytInitialPlayerResponse.videoDetails.shortDescription` — a separate
+ * JSON blob from the `ytInitialData` the music-attribution panel uses, but
+ * present in the same page HTML fetch, so no extra network call is needed.
+ */
+export function parseArtTrackDescription(html: string): ArtTrackAttribution | null {
+  const match = html.match(YT_INITIAL_PLAYER_RESPONSE_PATTERN);
+  if (!match) return null;
+
+  let data: unknown;
+  try {
+    data = JSON.parse(match[1]!);
+  } catch {
+    return null;
+  }
+
+  if (typeof data !== 'object' || data === null) return null;
+  const videoDetails = (data as Record<string, unknown>)['videoDetails'];
+  if (typeof videoDetails !== 'object' || videoDetails === null) return null;
+  const desc = (videoDetails as Record<string, unknown>)['shortDescription'];
+  if (typeof desc !== 'string') return null;
+
+  const artMatch = desc.match(ART_TRACK_PATTERN);
+  if (!artMatch) return null;
+
+  const title = artMatch[1]?.trim();
+  const artist = artMatch[2]?.trim();
+  if (!title || !artist) return null;
+
+  return { title, artist };
 }
 
 /**

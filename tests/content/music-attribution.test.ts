@@ -51,6 +51,7 @@ describe('fetchVideoPageSignals', () => {
         artist: 'Rick Astley',
         album: 'Whenever You Need Somebody',
       },
+      artTrack: null,
       category: 'Music',
     });
   });
@@ -59,18 +60,29 @@ describe('fetchVideoPageSignals', () => {
     const html = pageWith(null, 'Gaming');
     const fakeFetch = vi.fn(async () => ({ ok: true, text: async () => html }) as Response);
     const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
-    expect(result).toEqual({ attribution: null, category: 'Gaming' });
+    expect(result).toEqual({ attribution: null, artTrack: null, category: 'Gaming' });
   });
 
-  it('returns both null when the fetch response is not ok', async () => {
+  it('returns all null when the fetch response is not ok', async () => {
     const fakeFetch = vi.fn(async () => ({ ok: false, text: async () => '' }) as Response);
     const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
-    expect(result).toEqual({ attribution: null, category: null });
+    expect(result).toEqual({ attribution: null, artTrack: null, category: null });
   });
 
-  it('returns both null when the fetch throws (network error, abort, etc.)', async () => {
+  it('returns all null when the fetch throws (network error, abort, etc.)', async () => {
     const fakeFetch = vi.fn(async () => { throw new Error('offline'); });
     const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
-    expect(result).toEqual({ attribution: null, category: null });
+    expect(result).toEqual({ attribution: null, artTrack: null, category: null });
+  });
+
+  it('parses an Art Track description block when present', async () => {
+    const artTrackDesc = 'Provided to YouTube by DistroKid\n\nSong Title · Artist Name\nAlbum\n℗ 2024 Label\n';
+    const playerResponse = { videoDetails: { shortDescription: artTrackDesc } };
+    const html =
+      `<script>var ytInitialData = {};</script>` +
+      `<script>var ytInitialPlayerResponse = ${JSON.stringify(playerResponse)};</script>`;
+    const fakeFetch = vi.fn(async () => ({ ok: true, text: async () => html }) as Response);
+    const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
+    expect(result.artTrack).toEqual({ title: 'Song Title', artist: 'Artist Name' });
   });
 });
