@@ -58,6 +58,17 @@ export async function writeUserPicked(storage: StorageLike, videoId: string): Pr
   await storage.set({ [`${UP_PREFIX}${videoId}`]: true });
 }
 
+/**
+ * Forgets this video's manual correction entirely — both the "user picked"
+ * flag and the VideoMeta pointer — so the next FETCH_LYRICS treats it as a
+ * first visit and re-runs auto-detection from scratch, exactly as if the
+ * user had never corrected it. Does not touch the lyrics cache (lc:), which
+ * is keyed by lrclibId and shared across videos.
+ */
+export async function clearUserPick(storage: StorageLike, videoId: string): Promise<void> {
+  await storage.remove([`${UP_PREFIX}${videoId}`, `${VM_PREFIX}${videoId}`]);
+}
+
 export async function readVideoMeta(
   storage: StorageLike,
   videoId: string,

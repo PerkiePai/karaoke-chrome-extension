@@ -1,0 +1,46 @@
+{
+  "name": "\"Music in this video\" panel (YouTube Content ID music metadata panel)",
+  "type": "Metadata-resolver; also functions as an implicit music-vs-non-music binary signal, since its presence implies the video was Content-ID-claimed as containing identified music",
+  "maintainer": "Google / YouTube (official first-party feature, populated via the Content ID copyright-management system and rights-holder-supplied metadata)",
+
+  "method": "Metadata parsing/scraping. The panel's text (song title, artist, sometimes licensor) is embedded in the watch page's ytInitialData JSON (engagement-panel / video-description music section) and rendered client-side. The underlying detection is done server-side by Content ID audio fingerprinting against rights-holder reference files, but that matching process itself is not exposed to third parties — only its output (a short metadata block) is exposed via the panel.",
+  "required_input": "Video URL / watch-page HTML (the embedded ytInitialData JSON blob). No client-side audio processing is involved.",
+  "minimum_clip_length": "0s — this is precomputed server-side metadata; the consumer only reads an already-resolved tag, it does not analyze any clip length itself.",
+
+  "classification_or_hitrate": "Not quantified by Google in any published number. [uncertain] Coverage is limited to videos where Content ID has matched a claimed reference recording and the rights holder supplied complete metadata; community/creator-forum reports indicate the panel frequently does not appear even for genuinely musical content when the track is unclaimed, still processing, or has incomplete metadata, and it is documented to never appear on videos marked \"made for kids\".",
+  "pitch_speed_cover_robustness": "[uncertain] Not documented by Google for this specific panel. The underlying Content ID fingerprinting technology is industry-known to be sensitive to pitch/speed manipulation (nightcore, sped-up edits) and generally cannot match live performances or cover versions since they are not acoustically identical to the submitted reference recording, but no official statement confirms this specifically for the panel's behavior.",
+  "catalog_language_bias": "Coverage is entirely downstream of which rights holders have enrolled reference audio in Content ID. Major-label Western catalogs and large K-pop/J-pop label partners (e.g. SM, YG) are broadly represented. Anime/VTuber coverage depends on whether the responsible agency (e.g. Aniplex, Cover Corp) has enrolled the audio. Indie, self-released, and unclaimed uploads are the weakest segment and frequently receive no panel at all even when a human would clearly identify the content as music, consistent with the official doc's own caveat that the panel requires \"sufficient data from the copyright owner.\"",
+  "evaluation_dataset": "[uncertain] None published; Google does not release benchmark accuracy figures for this consumer-facing feature.",
+  "confidence_calibration": "No confidence score is exposed. The panel is a binary presence/absence UI element carrying a flat text metadata block, not a probabilistic score that can be threshold-tuned.",
+
+  "api_availability": "No official API exists to query this data. It is free to read as part of normal public page load (no API key, no documented rate limit beyond ordinary YouTube page-load throttling), but entirely unofficial/unsupported for programmatic third-party consumption.",
+  "chrome_extension_usability": "Directly reachable with no extra permissions: a content script already injected on the youtube.com watch page can read the ytInitialData object already loaded into that same page, so no CORS issue, no host_permissions expansion, and no backend proxy is required.",
+  "audio_access_requirement": "None — pure text/DOM/JSON read, no raw audio access of any kind.",
+  "client_vs_server": "Fully client-side; nothing beyond the normal page load leaves the user's machine, and no video ID is sent to any third party beyond YouTube itself (which the user is already communicating with by viewing the page).",
+  "bundle_weight_cold_start": "Zero added bundle weight; the data is already present in the page the extension runs in, so reading it is an effectively free, synchronous, sub-millisecond operation once the page has loaded.",
+  "breakage_risk": "Moderate. This reads an unofficial, undocumented internal object shape (ytInitialData renderer keys/nesting), not a stable public API. Google has changed this panel's underlying markup across redesigns before — e.g., third-party projects such as Invidious have had to add dedicated patches to support parsing the \"music description section\" as YouTube's own structure evolved. No official SLA or community-maintained patch channel exists specifically for this; blast radius on breakage is limited to this one signal silently returning nothing.",
+
+  "realtime_capability": "Effectively instant — reading already-loaded page JSON is a synchronous, sub-millisecond client-side operation once the page itself has finished loading.",
+
+  "identification_fields": "Song title and artist name (artist is typically linked to a YouTube Music channel/topic page), and sometimes a licensor/label credit string. Officially capped at the first 10 songs per video. No confidence score is provided. [uncertain] whether an explicit album field exists in the underlying JSON versus only being inferable.",
+  "isrc_availability": "[uncertain] ISRCs are collected internally by YouTube from rights holders as part of Content ID metadata submission, but are not exposed to viewers in the public-facing panel; no public ISRC output could be confirmed.",
+  "karaoke_specific_outputs": "None — no BPM, musical key, vocal/instrumental activity flag, or word-level timing is provided by this panel.",
+
+  "tos_restrictions": "[uncertain] Reading the publicly rendered watch-page DOM/JSON that the extension is already injected into is not equivalent to calling a private API endpoint, but systematically scraping and republishing YouTube's own page data could still be read as running against YouTube's Terms of Service general prohibition on automated/unauthorized data collection outside the official Data API. No explicit official sanction or prohibition specifically addresses this narrow, read-only, in-page use case.",
+  "risk_tolerance_note": "Lower-risk than the other unofficial techniques surveyed in this project, since it only reads DOM/JSON data already delivered to the user's own browser for a page the user is already viewing (broadly comparable to how many legitimate extensions, e.g. ad blockers, read page content), rather than making unauthorized outbound requests to a private Google endpoint or using scraped authentication credentials.",
+
+  "cascade_position": "Gate / high-precision enrichment. When present, this is an extremely high-precision, officially-labeled signal confirming both \"this is music\" and the correct title/artist directly, so it should run first and cheaply short-circuit the rest of the identification cascade. Its absence is NOT proof the video isn't music (high false-negative rate for unclaimed/indie content), so it cannot serve as the sole non-music classifier.",
+  "failure_mode": "Fails silently. Either the panel is entirely absent (most likely exactly for the indie/unclaimed population this project most needs to handle), or, less commonly, is present but incomplete (only 10 of N songs shown, or a generic/compilation credit). It does not produce a confidently wrong answer — it produces no answer.",
+  "cost_model_at_scale": "Free — piggybacks on the page load the extension already performs; no additional per-query cost or documented ceiling.",
+  "geo_region_availability": "[uncertain] Not formally region-gated, but rights-holder claim/licensing behavior can vary by territory (a track claimed with Content ID in one region but not another due to differing label deals), so panel presence can be inconsistent across users in different regions even for identical source audio.",
+
+  "uncertain": [
+    "classification_or_hitrate",
+    "pitch_speed_cover_robustness",
+    "evaluation_dataset",
+    "identification_fields",
+    "isrc_availability",
+    "tos_restrictions",
+    "geo_region_availability"
+  ]
+}

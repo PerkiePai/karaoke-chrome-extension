@@ -1,4 +1,5 @@
 import { PANEL_STYLES } from './panel-styles';
+import { parseLrc } from '../core/lrc-parser';
 import type { LyricLine, LrclibRecord } from '../core/types';
 
 export const PANEL_HOST_ID = 'karaoke-lyrics-panel-host';
@@ -16,6 +17,13 @@ export interface PanelHandle {
   setStatus(message: string): void;
   /** Shows a status message inside the search overlay (yellow, no layout shift). */
   setSearchStatus(message: string): void;
+  /** Shows or hides a "Retry" button below the status message — used for
+   *  transient failures (network down, rate-limited) where repeating the
+   *  same lookup might succeed, as opposed to not-found/category-gated
+   *  where it never would. */
+  showRetry(visible: boolean): void;
+  /** Fires when "Retry" is clicked. */
+  onRetry(callback: () => void): void;
   /** `synced=false` (the default is true) renders every line in the same
    *  bold/white style as an active line — used for plain-text lyrics that
    *  have no timestamps to highlight against. */
@@ -83,6 +91,9 @@ export interface PanelHandle {
   onSearch(callback: (query: string) => void): void;
   /** Fires when user clicks a candidate. */
   onCandidatePick(callback: (record: LrclibRecord) => void): void;
+  /** Fires when the user clicks "Reset" in the search overlay — forgets any
+   *  manual correction and reverts this video to the auto-detected match. */
+  onResetMatch(callback: () => void): void;
   destroy(): void;
 }
 
@@ -131,12 +142,14 @@ export function mountPanel(container: HTMLElement): PanelHandle {
           <form class="kx-search-form" autocomplete="off">
             <input class="kx-search-input" type="text" placeholder="Artist and song title…">
             <button type="submit" class="kx-search-btn">Search</button>
+            <button type="button" class="kx-search-reset" title="Forget my correction and use the auto-detected match">Reset</button>
             <button type="button" class="kx-search-close" title="Close">✕</button>
           </form>
           <div class="kx-search-status"></div>
           <ol class="kx-candidates kx-hidden"></ol>
         </div>
         <div class="kx-status"></div>
+        <button class="kx-retry kx-hidden">Retry</button>
         <ol class="kx-lines"></ol>
       </div>
     </div>
@@ -276,22 +289,56 @@ export function mountPanel(container: HTMLElement): PanelHandle {
   let correctRequestListener: (() => void) | null = null;
   let searchListener: ((query: string) => void) | null = null;
   let candidatePickListener: ((record: LrclibRecord) => void) | null = null;
+  let resetMatchListener: (() => void) | null = null;
+  let retryListener: (() => void) | null = null;
 
   find<HTMLElement>('.kx-not-this').addEventListener('click', () => {
     correctRequestListener?.();
   });
 
+  find<HTMLElement>('.kx-search-reset').addEventListener('click', () => {
+    resetMatchListener?.();
+  });
+
+  find<HTMLElement>('.kx-retry').addEventListener('click', () => {
+    retryListener?.();
+  });
+
+  const searchInput = find<HTMLInputElement>('.kx-search-input');
+
   find<HTMLFormElement>('.kx-search-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const q = find<HTMLInputElement>('.kx-search-input').value.trim();
+    const q = searchInput.value.trim();
     if (q) searchListener?.(q);
   });
 
   // Stop keystrokes from reaching YouTube's document-level player shortcuts
   // (e.g. "f" for fullscreen, "k" for play/pause) while typing here.
-  find<HTMLInputElement>('.kx-search-input').addEventListener('keydown', (e) => {
+  searchInput.addEventListener('keydown', (e) => {
     e.stopPropagation();
   });
+
+  // Belt-and-suspenders for the shortcut leak above: YouTube's spacebar
+  // handler decides whether to play/pause by inspecting document.activeElement,
+  // which — because these inputs live inside a shadow root — resolves to the
+  // <div id="kx-panel-host"> host, not the focused <input>. That makes YouTube
+  // think nothing is focused, so per-element stopPropagation() never gets a
+  // chance to matter. Catch the key event in the capture phase at the window
+  // (which always runs before a listener YouTube attached on document, since
+  // capture flows outside-in) and use composedPath() — which pierces the
+  // shadow boundary — to see the *real* target underneath the retargeted one.
+  // Space specifically toggles play/pause on "keyup" (not "keydown" — that
+  // would repeat-fire while the key is held), so both must be swallowed.
+  function isPanelTextInput(e: KeyboardEvent): boolean {
+    const realTarget = e.composedPath()[0];
+    return realTarget === searchInput || realTarget === offsetInput;
+  }
+  function swallowShortcutKey(e: KeyboardEvent): void {
+    if (isPanelTextInput(e)) e.stopPropagation();
+  }
+  window.addEventListener('keydown', swallowShortcutKey, true);
+  window.addEventListener('keyup', swallowShortcutKey, true);
+  window.addEventListener('keypress', swallowShortcutKey, true);
 
   find<HTMLElement>('.kx-search-close').addEventListener('click', () => {
     find<HTMLElement>('.kx-search-overlay').classList.add('kx-hidden');
@@ -314,6 +361,12 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       const el = find<HTMLElement>('.kx-search-status');
       el.textContent = message;
       el.style.display = message ? 'block' : 'none';
+    },
+    showRetry(visible) {
+      find<HTMLElement>('.kx-retry').classList.toggle('kx-hidden', !visible);
+    },
+    onRetry(callback) {
+      retryListener = callback;
     },
     setLines(lines, synced = true) {
       // textContent per line: lyrics are untrusted third-party content.
@@ -410,7 +463,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
       find<HTMLElement>('.kx-not-this').classList.toggle('kx-hidden', !visible);
     },
     enterSearchMode(query) {
-      find<HTMLInputElement>('.kx-search-input').value = query;
+      searchInput.value = query;
       find<HTMLElement>('.kx-search-overlay').classList.remove('kx-hidden');
       find<HTMLElement>('.kx-candidates').classList.add('kx-hidden');
     },
@@ -424,13 +477,25 @@ export function mountPanel(container: HTMLElement): PanelHandle {
         ...candidates.map((record) => {
           const li = document.createElement('li');
           li.className = 'kx-candidate';
+          const head = document.createElement('div');
+          head.className = 'kx-candidate-head';
           const title = document.createElement('span');
           title.className = 'kx-candidate-title';
           title.textContent = record.trackName;
+          // Same "does it actually parse to a timed line" check planRender
+          // uses, not a bare truthiness check on syncedLyrics — an LRC body
+          // of only metadata tags carries no real timing either.
+          const synced = parseLrc(record.syncedLyrics ?? '').length > 0;
+          const badge = document.createElement('span');
+          badge.className = synced
+            ? 'kx-candidate-badge kx-candidate-badge-synced'
+            : 'kx-candidate-badge kx-candidate-badge-plain';
+          badge.textContent = synced ? 'synced' : 'no timestamps';
+          head.append(title, badge);
           const sub = document.createElement('span');
           sub.className = 'kx-candidate-sub';
           sub.textContent = record.artistName;
-          li.append(title, sub);
+          li.append(head, sub);
           li.addEventListener('click', () => candidatePickListener?.(record));
           return li;
         }),
@@ -452,8 +517,14 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     onCandidatePick(callback) {
       candidatePickListener = callback;
     },
+    onResetMatch(callback) {
+      resetMatchListener = callback;
+    },
     destroy() {
       stopScrollAnim();
+      window.removeEventListener('keydown', swallowShortcutKey, true);
+      window.removeEventListener('keyup', swallowShortcutKey, true);
+      window.removeEventListener('keypress', swallowShortcutKey, true);
       host.remove();
     },
   };

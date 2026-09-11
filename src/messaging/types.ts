@@ -12,11 +12,19 @@ export interface FetchLyricsRequest {
    * search request.
    */
   alternates?: { artist: string | null; track: string }[];
+  /**
+   * Set when the content script's soft category gate fired: YouTube's own
+   * category confidently rules out music and no Music attribution panel
+   * overrode it. Only skips the search when there is no prior VideoMeta for
+   * this video — a previously cached or user-picked match always wins,
+   * regardless of category. See `core/video-category.ts`.
+   */
+  skipSearchIfNonMusic?: boolean;
 }
 
 export type FetchLyricsResponse =
   | { ok: true; record: LrclibRecord; lrclibId: number; offsetSec: number; scrollSpeed: number }
-  | { ok: false; reason: 'not-found' | 'rate-limited' | 'network'; message: string };
+  | { ok: false; reason: 'not-found' | 'rate-limited' | 'network' | 'category-gated'; message: string };
 
 export interface SearchCandidatesRequest {
   type: 'SEARCH_CANDIDATES';
@@ -35,3 +43,11 @@ export interface PickCandidateRequest {
 }
 
 export type PickCandidateResponse = { ok: true };
+
+/** Forgets the user's manual correction for a video, reverting it to auto-detection. */
+export interface ResetMatchRequest {
+  type: 'RESET_MATCH';
+  videoId: string;
+}
+
+export type ResetMatchResponse = { ok: true };

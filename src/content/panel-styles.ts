@@ -74,6 +74,17 @@ export const PANEL_STYLES = `
   .kx-collapse-btn:hover { background: rgba(255, 255, 255, 0.1); }
   .kx-collapse-btn svg { display: block; }
   .kx-status { font-size: 12px; color: #ffb86b; padding: 8px 0; }
+  .kx-retry {
+    background: none;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #f1f1f1;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 3px 10px;
+    margin: 0 0 8px;
+  }
+  .kx-retry:hover { background: #2a2a2a; border-color: #888; }
   .kx-lines {
     list-style: none;
     margin: 0;
@@ -189,6 +200,16 @@ export const PANEL_STYLES = `
     padding: 3px 8px;
   }
   .kx-search-btn:hover { background: #444; }
+  .kx-search-reset {
+    background: none;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+  .kx-search-reset:hover { color: #f1f1f1; border-color: #888; }
   .kx-search-close {
     background: none; border: none; color: #666; cursor: pointer;
     font-size: 13px; padding: 0 2px; line-height: 1;
@@ -210,8 +231,19 @@ export const PANEL_STYLES = `
     gap: 1px;
   }
   .kx-candidate:hover { background: #1a1a1a; }
+  .kx-candidate-head { display: flex; align-items: center; gap: 6px; }
   .kx-candidate-title { font-size: 13px; color: #f1f1f1; }
   .kx-candidate-sub { font-size: 11px; color: #888; }
+  .kx-candidate-badge {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1px 6px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .kx-candidate-badge-synced { background: #1b4d3e; color: #6fdcb0; }
+  .kx-candidate-badge-plain { background: #4a3a1a; color: #dcb06f; }
   .kx-sync-here { margin-left: 4px; }
   .kx-speed {
     display: flex;

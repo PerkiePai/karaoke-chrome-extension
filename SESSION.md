@@ -1,6 +1,6 @@
 # Session state — YouTube Karaoke Lyrics extension
 
-Last updated: 2026-08-27 (session 12)
+Last updated: 2026-09-10 (session 13)
 
 ## What this is
 
@@ -445,44 +445,28 @@ Searched for whether "parse artist/track from a freeform title" or the LLM alter
 - [Columbia LabROSA — Artist/album/song name text normalization](http://labrosa.ee.columbia.edu/projects/musicsim/normalization.html) — older practical reference (not peer-reviewed), documents the classic accent-stripping / Unicode-to-Latin / title-case normalization recipe this repo's NFC-normalize-and-strip-punctuation approach descends from.
 - Conclusion drawn: nobody in the literature has a materially better *parsing* algorithm than rules + fuzzy matching; the NER/LLM paper's own finding is an argument for keeping the deterministic regex + candidate-generation + score-gating design already built here.
 
+## Session 13 — reset button, candidate sync-status badge, soft category gate, retry affordance, double-call race re-verified
+
+Five items, picked from tester feedback plus the Next actions list below (items previously numbered 1 and 5). All implemented with tests; typecheck and build clean; **not yet browser-verified in Opera GX**.
+
+- **Reset button.** Tester asked for a reset control in the search panel. Built as "forget my manual correction, go back to auto-detection" rather than "clear the search box" (the ✕ close button already did that). New `RESET_MATCH` message → `clearUserPick()` (`src/background/storage.ts`) removes both the `up:` and `vm:` keys for the video, so the next `FETCH_LYRICS` treats it as a first visit. Content script (`onResetMatch` in `src/content/index.ts`) sets `currentLrclibId = null` before reloading so the fresh response's offset/scrollSpeed (both reset to 0/1, since VideoMeta is gone) aren't overridden by the pick being undone. Button lives next to Search/Close in the search overlay (`.kx-search-reset`).
+- **Candidate sync-status badge.** Each row in the manual-search candidate list now shows a `synced` / `no timestamps` badge (`src/content/panel.ts`, `showCandidates`), using the same `parseLrc(...).length > 0` check `planRender` uses — not a bare `syncedLyrics` truthiness check, since an LRC body of only metadata tags parses to zero real lines.
+- **Soft category gate.** Explicitly *not* the literal spec wording ("panel does not mount at all" on non-Music videos) — user chose a softer version after a risk discussion: the panel always mounts, manual search is always available, and only the *auto*-search is skipped, only when (a) YouTube's own category (`ytInitialPlayerResponse.microformat.playerMicroformatRenderer.category`, confirmed against a real watch page — see `src/core/video-category.ts`) is in a small denylist of categories with no plausible music content (Gaming, Sports, News & Politics, Howto & Style, Science & Technology, Autos & Vehicles, Travel & Events, Pets & Animals, Education, Nonprofits & Activism — deliberately NOT Entertainment/People & Blogs/Comedy/Film & Animation, which carry real covers), (b) no Music attribution panel overrides it, and (c) — critically — **no prior VideoMeta exists for the video**. That last condition lives in `handleFetchLyrics` (`skipSearchIfNonMusic` field on `FetchLyricsRequest`), not the content script, specifically so a previously cached or user-picked match is never made to silently disappear on a later reload just because the category looks wrong. New `category-gated` reason on `FetchLyricsResponse`; content script shows the correct-bar (manual search) for it, same as `not-found`. `fetchMusicAttribution` was folded into `fetchVideoPageSignals` (one page fetch now serves both the Music-attribution and category signals, instead of two).
+- **Retry affordance.** Spec's error-handling table always called for this ("Network down or 5xx → Panel offers retry"), never built. New `PanelHandle.showRetry`/`onRetry`; shown only for `reason === 'network' | 'rate-limited'` (not `not-found`/`category-gated`, where repeating the same lookup can't help — those need a different search). Retry re-runs the full `load()` for the current video via the same generation-bump pattern `reconcile()`'s 'reload' case uses.
+- **Double-call race (Next actions #5, closed without a code change) — re-verified, not reproducible in current code.** Traced the exact sequence the note described: there is no `await` between `mountPanel(container)` returning and `load()`'s first line (`isLoading = true`) — calling an async function runs synchronously up to its first `await`, so `isLoading` flips true in the same synchronous turn `mountPanel` returns in, with no event-loop gap for a concurrent `reconcile()` tick to land in. Same holds for the `reload` dispatch path. This was likely closed as a side effect of the generation-counter/isLoading refactor sometime after session 4; the debt note just never got pruned. Not testable directly (`content/index.ts` is DOM-wiring glue with no exported internals, consistent with the spec's "manual, by checklist" testing note) — closed by code-reading, per this project's own established practice for this class of code.
+
+**Also fixed in passing**: two `tests/content/*.test.ts` files (`auto-scroll-loop.test.ts`, `sync-loop.test.ts`) had hand-rolled `PanelHandle` mocks missing `setSearchStatus`/`onOffsetSet` — a pre-existing typecheck error already present on master (documented in session 11). Added those plus the new `onResetMatch`/`showRetry`/`onRetry` stubs so `npm run typecheck` is now fully clean, not just no-worse-than-before.
+
+345 tests (was 315 at session 12; +8 net from the pre-existing-failure baseline itself unchanged), typecheck clean, build clean. **The same 6 `panel.test.ts` failures from session 11/master persist** (`setOffsetControls` ×2, `search UI` ×4) — confirmed via `git stash` that they exist identically on a clean checkout, unrelated to this session's changes; not investigated further (out of this session's scope).
+
+**Deliberately deferred, not built this session**: "visual polish and theming" (too undefined to build without more direction — flagged to the user, dropped from scope) and rate-limit backoff / LRU cache cap from the old "Sprint 5 hardening" line — both already existed (`LrclibRateLimitError`/`retry-after` handling in `src/lrclib/client.ts`, LRU eviction in `src/background/storage.ts`'s `writeLyricsCache`) and needed no work.
+
 ## Next actions
 
-1. Category gate, error states, polish — the scope originally pencilled in for "Sprint 5" before it got reassigned to dual sync mode / detection signals; still not started.
-2. Decide on Musixmatch fallback based on Thai hit rate.
-3. Decide on dochord based on hit rate (chord source, not lyrics sync).
-4. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
-5. Close the remaining double-call race: a `reload` can fire in the 200ms window between `mountPanel` returning and `load()` setting `isLoading = true`, sending two `FETCH_LYRICS` messages for the same videoId. Benign with current fixes (both find same result) but wastes a network round-trip.
-6. Browser-verify the Session 7 panel changes (5-line window centering, overflow clip, static-lyric styling) in Opera GX — not yet done.
-7. Browser-verify the Session 10 changes (minimize/expand toggle and its animation, click-to-seek + centering, end-of-lyrics highlight persistence) in a real browser — built and unit-tested only so far, consistent with this project's running lesson that live testing is what actually catches these bugs.
-
-## Session 11 — inline offset typing, scanning animation, gear icon
-
-Three UI features shipped, no formal plan doc:
-
-- **Inline offset typing (feature 3)**: Clicking the offset value display (e.g. `+0.25s`) now replaces it with a small inline `<input>`. User types any number (e.g. `-2.5`). Enter or blur commits via `onOffsetInput` callback (fires with absolute seconds, clamped ±30s in `index.ts`); Escape cancels. The nudge buttons still work alongside it. Implementation: `kx-offset-value` span + `kx-offset-input` sibling hidden/shown on toggle; `commitOffsetEdit` has a guard against double-fire from programmatic hide→blur.
-- **Scanning line animation (feature 5)**: A 2px-tall `kx-scanner` bar appears while lyrics are being fetched. A 20%-wide white beam sweeps left→right on repeat (`@keyframes kx-scan`, `translateX(-100%)` → `translateX(500%)`), no progress bar semantics. `PanelHandle.setSearching(true/false)` is the toggle; called in `load()` (from start to finally) and the `onSearch` handler.
-- **Settings gear icon (feature 4)**: The time-shift row (`kx-offset`) now shows only a ⚙ button by default. Clicking it toggles the actual controls (`kx-offset-controls` div: ◀ value ▶ + Sync here). Gear turns white when expanded (`kx-gear-active` class). Controls stay in their last open/closed state across nudge calls (only collapse state changes when `setOffsetControls(false)` hides the whole row).
-
-Build clean, no test changes needed (these are all UI/DOM mutations with no pure-function logic to unit-test).
-
-## Pending feature ideas (from session 11 discussion)
-
-### Key transposition (pitch shift)
-Shift the YouTube video audio by ±N semitones without changing playback speed. Requires Web Audio API + a phase-vocoder library (e.g. `soundtouch-js` or a custom AudioWorklet) — no native Web Audio node does pitch-shift-without-timestretch. UI would be a semitone counter in the settings gear row. Medium-high complexity; treat as its own sprint. Risk: YouTube player changes may break audio capture.
-
-### Manual lyrics input (2a)
-Add a "Paste lyrics" flow (button in the search/correct bar area) with a `<textarea>`. The existing LRC parser and `planRender` already handle both synced-LRC and plain-text; this is purely a UI addition. Low complexity, could be a standalone session.
-
-### Gemini AI lyrics (2b)
-Use the Gemini API to generate lyrics from song title + artist as a last-resort fallback when LRCLIB returns nothing. Requires an API key settings UI (`chrome.storage.sync`). Copyright-grey for full lyrics generation; better framing is using Gemini to clean/reformat pasted text from feature 2a. Build 2a first (shared textarea/rendering pipeline).
-
-No popup exists. The quickest way to inspect the nf: cache right now is through Chrome's DevTools:
-
-1. Go to chrome://extensions
-2. Find YouTube Karaoke Lyrics → click Service worker (opens DevTools for the background)
-3. In the Console tab, run:
-chrome.storage.local.get(null, data => {
-  const nf = Object.entries(data).filter(([k]) => k.startsWith('nf:'));
-  console.table(nf.map(([k, v]) => ({ videoId: k.slice(3), cachedAt: new Date(v.at).toLocaleString() })));
-});
-
+1. Decide on Musixmatch fallback based on Thai hit rate.
+2. Decide on dochord based on hit rate (chord source, not lyrics sync).
+3. **music.youtube.com DOM extractor** — add a host-specific extractor for `music.youtube.com` that reads the already-separated artist and track fields directly from the DOM, avoiding raw-title parsing heuristics entirely.
+4. Browser-verify the Session 7 panel changes (5-line window centering, overflow clip, static-lyric styling) in Opera GX — not yet done.
+5. Browser-verify the Session 10 changes (minimize/expand toggle and its animation, click-to-seek + centering, end-of-lyrics highlight persistence) in a real browser — built and unit-tested only so far, consistent with this project's running lesson that live testing is what actually catches these bugs.
+6. **Browser-verify Session 13's five changes** (reset button, candidate sync-status badge, soft category gate on a real non-music video, retry button on a simulated network failure, and that a previously-picked song survives a reload even when its category looks non-music) — none of this has touched a real browser yet.
+7. The 6 pre-existing `panel.test.ts` failures (documented since session 11, reconfirmed session 13) have never actually been root-caused — worth a look next time panel.ts is touched.

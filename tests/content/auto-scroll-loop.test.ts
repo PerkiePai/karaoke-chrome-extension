@@ -17,12 +17,16 @@ function mockPanel(extentPx = 1000, initialScrollTop = 0, roundsToInteger = fals
   const panel: PanelHandle = {
     setHeader: vi.fn(),
     setStatus: vi.fn(),
+    setSearchStatus: vi.fn(),
+    showRetry: vi.fn(),
+    onRetry: vi.fn(),
     setLines: vi.fn(),
     onLineClick: vi.fn(),
     setActiveLine: vi.fn(),
     onManualScroll: vi.fn(),
     setOffsetControls: vi.fn(),
     onOffsetNudge: vi.fn(),
+    onOffsetSet: vi.fn(),
     setScrollTop: vi.fn((px: number) => store(px)),
     getScrollTop: vi.fn(() => scrollTop),
     getScrollExtentPx: vi.fn(() => extentPx),
@@ -39,6 +43,7 @@ function mockPanel(extentPx = 1000, initialScrollTop = 0, roundsToInteger = fals
     onCorrectRequest: vi.fn(),
     onSearch: vi.fn(),
     onCandidatePick: vi.fn(),
+    onResetMatch: vi.fn(),
     destroy: vi.fn(),
   };
   return {

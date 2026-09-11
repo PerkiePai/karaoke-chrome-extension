@@ -1,0 +1,197 @@
+topic: >
+  Classifying YouTube videos as music vs. non-music, and — if music —
+  identifying the song title and artist (for the karaoke-chrome-extension
+  project)
+
+items:
+  # --- YouTube-native signals (metadata already on/near the page) ---
+  - id: yt-data-api-v3
+    name: YouTube Data API v3 (videoCategoryId / topicDetails)
+    note: >
+      Already evaluated by project and rejected — no benefit over free
+      ytInitialData scraping; adds an API-key/quota dependency.
+  - id: yt-initial-data-scrape
+    name: ytInitialData HTML scrape (Music in this video panel)
+    note: >
+      Current implementation — src/core/music-attribution.ts. Reads
+      videoAttributeViewModel from the structured-description engagement
+      panel embedded in page HTML.
+  - id: innertube-direct-endpoints
+    name: Innertube /youtubei/v1/player + /youtubei/v1/next endpoints
+    note: >
+      Direct JSON endpoints instead of HTML scraping — same data
+      (musicVideoType, microformat, structured-description panel) with a
+      stable request shape, decoupled from HTML layout changes.
+  - id: topic-channel-signal
+    name: "Artist - Topic" channels / Official Artist Channel (OAC) badge
+    note: >
+      Auto-generated distributor channels named "<Artist> - Topic" — near
+      100% precision music classifier, and channel name is the artist.
+  - id: art-track-description-block
+    name: "Provided to YouTube by <distributor>" Art Track description
+    note: >
+      Regex-parseable label-supplied block (Song/Artist/Album/Writers/
+      Released on) in Art Track descriptions — more reliable than title
+      heuristics.
+  - id: music-panel-documented-behavior
+    name: "Music in this video" panel — official documented constraints"
+    note: >
+      Google docs confirm only first 10 songs are covered per video, and
+      panel is Content-ID-driven (absent for indie/unclaimed uploads).
+  - id: yt-dlp-extractor-reference
+    name: yt-dlp YouTube extractor as reference implementation
+    note: >
+      Battle-tested parser normalizing YouTube music metadata into
+      track/artist/album/release_year — useful as an edge-case spec.
+  - id: yt-timedtext-captions
+    name: YouTube timedtext caption tracks
+    note: >
+      Auto-generated or uploader captions can serve as a zero-cost
+      time-aligned lyrics fallback and a weak music-vs-talk signal.
+  - id: title-normalizer-heuristics
+    name: Video title/channel/description heuristic parsing
+    note: >
+      Current implementation — src/core/title-normalizer.ts. Regex/NLP
+      parsing (e.g. "Artist - Title", "(Official Video)" stripping).
+  - id: yt-music-scraping
+    name: YouTube Music (music.youtube.com) scraping + ytmusicapi
+    note: >
+      Direct page scraping and/or reverse-engineered internal endpoints
+      (as ytmusicapi does) for canonical title/artist.
+
+  # --- Audio fingerprinting (identification) ---
+  - id: acrcloud
+    name: ACRCloud
+    note: Commercial audio fingerprinting API.
+  - id: audd
+    name: AudD
+    note: ~160M track catalog via neural fingerprinting; has a free tier.
+  - id: shazam-shazamkit
+    name: Shazam / ShazamKit (Apple official SDK)
+    note: >
+      Official SDK (iOS/macOS/Android), not usable inside a Chrome
+      extension. Correction to earlier "no official API" assumption.
+  - id: songrec
+    name: SongRec (open-source Shazam client, Rust/GPL)
+    note: Free reimplementation talking to Shazam's real endpoint; ToS risk.
+  - id: acoustid-chromaprint
+    name: AcoustID + Chromaprint
+    note: Open-source fingerprinting backed by MusicBrainz metadata.
+  - id: soundhound-houndify
+    name: SoundHound Houndify
+    note: Commercial audio recognition API.
+  - id: olaf
+    name: Olaf (Overly Lightweight Acoustic Fingerprinting)
+    note: >
+      Compiles to WebAssembly — runs fully client-side in-browser against
+      a self-built catalog, zero per-query cost.
+  - id: panako
+    name: Panako
+    note: >
+      Fingerprinting robust to time-stretch/speed-up/pitch-shift — matters
+      for nightcore/sped-up YouTube reuploads that defeat Chromaprint.
+  - id: research-grade-fingerprinters
+    name: NeuralFP / audfprint / Echoprint
+    note: Additional open-source fingerprinters (learned embeddings vs. classic).
+  - id: gracenote
+    name: Gracenote (Nielsen)
+    note: Commercial incumbent, dominant in automotive/CE and broadcast.
+
+  # --- Audio/ML classification (music vs. non-music, and features) ---
+  - id: yamnet-mediapipe
+    name: YAMNet via MediaPipe Audio Classifier (@mediapipe/tasks-audio)
+    note: Practical supported browser path for YAMNet (AudioSet, 521 classes).
+  - id: vggish
+    name: VGGish
+    note: Google audio embedding model for music/speech detection.
+  - id: panns
+    name: PANNs (Pretrained Audio Neural Networks)
+    note: Audio tagging model strong at music vs. speech vs. other.
+  - id: essentia-js
+    name: Essentia.js
+    note: >
+      Browser MIR library (WASM+TF.js) — genre/mood/instrumentation, and
+      uniquely yields BPM and key (direct karaoke features).
+  - id: clap
+    name: CLAP (LAION clap-htsat-*)
+    note: Zero-shot audio-text classification, no labeled taxonomy needed.
+  - id: mert
+    name: MERT (MERT-v1-95M/330M)
+    note: Self-supervised music-domain transformer, current default music encoder.
+  - id: muq-mulan
+    name: MuQ / MuQ-MuLan
+    note: 2025 SOTA joint music-text embedding, stronger than CLAP zero-shot on MagnaTagATune.
+  - id: singing-voice-detection
+    name: Singing Voice Detection (SVD)
+    note: Distinct task from music/non-music — determines when to show/highlight lyrics.
+  - id: source-separation
+    name: Demucs / Spleeter (source separation)
+    note: >
+      Vocal/instrumental separation — improves SVD and Whisper lyric
+      transcription, and supplies karaoke backing track.
+
+  # --- Metadata resolution & lyrics ---
+  - id: lrclib
+    name: LRCLIB (lrclib.net)
+    note: >
+      Current implementation — src/lrclib/client.ts, src/core/search-query.ts.
+      Free lyrics API also usable as title/artist search+match backend.
+  - id: odesli-songlink
+    name: Odesli / Songlink API
+    note: >
+      Resolves a YouTube URL to canonical title/artist/ISRC across
+      Spotify/Apple/Deezer — likely highest-leverage new item.
+  - id: itunes-search-api
+    name: iTunes/Apple Search API
+    note: Keyless, CORS-friendly, no auth, generous limits.
+  - id: deezer-api
+    name: Deezer public API
+    note: Keyless search, returns ISRC on track lookup.
+  - id: spotify-web-api
+    name: Spotify Web API (search + ISRC lookup)
+    note: >
+      Best catalog normalization, but mandatory OAuth and 2024-2025
+      restrictions removed several endpoints for new apps.
+  - id: musicbrainz-listenbrainz
+    name: MusicBrainz + ListenBrainz
+    note: Free/open, canonical AcoustID match target, stores YouTube URL relationships.
+  - id: discogs-api
+    name: Discogs API
+    note: Strongest coverage for non-mainstream/electronic/physical-only releases.
+  - id: musicfetch
+    name: Musicfetch
+    note: Commercial aggregator unifying 40+ services.
+  - id: syncedlyrics-blueprint
+    name: syncedlyrics (Python library, reference)
+    note: Aggregates Musixmatch/NetEase/LRCLIB/Megalobiz/Genius — source-priority blueprint.
+  - id: musixmatch-richsync
+    name: Musixmatch richsync (word-level sync)
+    note: Word-by-word sync vs. LRCLIB's line-level LRC — licensing is the blocker.
+  - id: netease-qq-lyrics
+    name: NetEase Cloud Music & QQ Music lyrics APIs
+    note: Substantially better coverage for C-pop/J-pop/anime/VTuber content.
+  - id: betterlyrics-prior-art
+    name: BetterLyrics cf-api
+    note: Directly analogous open-source prior art — YouTube Music lyrics extension backend.
+  - id: whisper-web
+    name: Whisper / whisper-web (Transformers.js)
+    note: >
+      Fully in-browser lyric transcription fallback (~75MB model,
+      WebGPU/WASM); note v3.8.1 hallucination risk on sung audio.
+
+  # --- Extension architecture constraints ---
+  - id: tabcapture-offscreen
+    name: chrome.tabCapture + offscreen document (MV3 audio architecture)
+    note: >
+      Mandatory MV3 pattern for any audio-based approach. Requires user
+      gesture; capture mutes tab unless reconnected to audioContext.destination.
+  - id: cors-host-permissions
+    name: CORS / host_permissions reachability
+    note: >
+      Per-API gate: LRCLIB/iTunes/Deezer/Odesli are directly callable;
+      Spotify OAuth/Musixmatch/ACRCloud effectively need a backend proxy.
+
+execution:
+  batch_size: 3
+  items_per_agent: 5
+  output_dir: ./results
