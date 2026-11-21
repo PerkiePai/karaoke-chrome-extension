@@ -167,3 +167,17 @@ describe('buildSearchQuery', () => {
     expect(buildSearchQuery('LOSO', 'คืนจันทร์')).toBe('คืนจันทร์ LOSO');
   });
 });
+
+describe('buildSearchQuery — non-ASCII Latin, Cyrillic and Greek letters', () => {
+  it('keeps a Cyrillic letter inside a mixed-script word', () => {
+    expect(buildSearchQuery('фрози', 'supїdo')).toBe('фрози supїdo');
+  });
+
+  it('keeps accented Latin letters', () => {
+    expect(buildSearchQuery('Beyoncé', 'Halo')).toBe('Beyoncé Halo');
+  });
+
+  it('still drops the romanized nickname of a predominantly-Thai field', () => {
+    expect(buildSearchQuery('Atom ชนกันต์', 'PLEASE')).toBe('ชนกันต์ PLEASE');
+  });
+});

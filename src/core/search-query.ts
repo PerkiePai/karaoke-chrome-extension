@@ -4,8 +4,13 @@ import { VARIANT_WORDS } from './match-scorer';
  * A run of Latin letters or digits, plus punctuation that appears inside names.
  * The leading character class includes the apostrophe too, so a token like
  * "'n'" keeps its opening quote instead of losing it to the run boundary.
+ *
+ * Latin means the whole script (é, ñ, ї's Cyrillic neighbours too), not ASCII:
+ * an ASCII class split "supїdo" into "sup do" and "Beyoncé" into "Beyonc".
+ * Never widen this to \p{L}, which would pull Thai/CJK into the Latin path.
  */
-const LATIN_RUN = /[A-Za-z0-9'][A-Za-z0-9'&.\-]*/g;
+const LATIN_RUN =
+  /[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}0-9'][\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}0-9'&.\-]*/gu;
 
 const ALL_DIGITS = /^[0-9]+$/;
 
