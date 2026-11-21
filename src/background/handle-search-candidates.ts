@@ -1,5 +1,5 @@
 import { LrclibRateLimitError } from '../lrclib/client';
-import { hasUsableLyrics } from '../core/match-scorer';
+import { hasUsableLyrics, scoreCandidates } from '../core/match-scorer';
 import type { LrclibRecord } from '../core/types';
 import type { SearchCandidatesRequest, SearchCandidatesResponse } from '../messaging/types';
 
@@ -27,8 +27,10 @@ export async function handleSearchCandidates(
     };
   }
 
-  return {
-    ok: true,
-    candidates: results.filter(hasUsableLyrics).slice(0, MAX_CANDIDATES),
-  };
+  const usable = results.filter(hasUsableLyrics);
+  // SYNCED_BONUS already puts a synced record ahead of a plain one of equal match.
+  const ranked = request.rankAgainst
+    ? scoreCandidates(request.rankAgainst, usable).map((c) => c.record)
+    : usable;
+  return { ok: true, candidates: ranked.slice(0, MAX_CANDIDATES) };
 }

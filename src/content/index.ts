@@ -7,6 +7,7 @@ import { startAutoScrollLoop, type AutoScrollLoopHandle } from './auto-scroll-lo
 import { fetchVideoPageSignals } from './music-attribution';
 import { parseVideoId } from '../core/youtube-url';
 import { buildReadings } from '../core/readings';
+import type { MatchInput } from '../core/match-scorer';
 import type { LyricLine } from '../core/types';
 import type {
   FetchLyricsRequest,
@@ -69,6 +70,9 @@ let currentScrollSpeed = 1;
 /** Duration of the video currently loaded, in seconds; null until known. The
  *  auto-scroll loop needs a total duration to scroll across. */
 let currentDurationSec: number | null = null;
+/** The song detected for the current video, sent with manual searches so the
+ *  background can rank results against it; null until detected. */
+let currentMatchInput: MatchInput | null = null;
 /** The running sync loop handle (synced lyrics only), so the nudge/tap-to-sync callbacks can update its offset. */
 let currentSyncLoop: SyncLoopHandle | null = null;
 /** The running auto-scroll loop handle (unsynced lyrics only), so the speed nudge callback can update its rate. */
@@ -123,6 +127,7 @@ function teardown(): void {
   currentSyncedLines = [];
   currentScrollSpeed = 1;
   currentDurationSec = null;
+  currentMatchInput = null;
   currentSyncLoop = null;
   currentAutoScrollLoop = null;
   isLoading = false;
@@ -291,6 +296,7 @@ async function activate(videoId: string): Promise<void> {
         resp = await chrome.runtime.sendMessage<SearchCandidatesRequest, SearchCandidatesResponse>({
           type: 'SEARCH_CANDIDATES',
           query,
+          ...(currentMatchInput ? { rankAgainst: currentMatchInput } : {}),
         });
       } catch {
         if (searchGen !== generation || !panel) return;
@@ -437,6 +443,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     const readings = buildReadings(song.rawTitle, song.channelName, attribution, artTrack);
     const primary = readings[0]!;
     panel.setHeader(primary.track, primary.artist ?? 'unknown artist');
+    currentMatchInput = { artist: primary.artist, track: primary.track, durationSec: song.durationSec };
 
     const request: FetchLyricsRequest = {
       type: 'FETCH_LYRICS',

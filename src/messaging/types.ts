@@ -1,4 +1,5 @@
 import type { LrclibRecord } from '../core/types';
+import type { MatchInput } from '../core/match-scorer';
 
 export interface FetchLyricsRequest {
   type: 'FETCH_LYRICS';
@@ -22,6 +23,8 @@ export interface SearchCandidatesRequest {
   type: 'SEARCH_CANDIDATES';
   /** Raw user-typed query, passed verbatim to lrclib /search?q= */
   query: string;
+  /** The song detected for this video: results are ranked by how well they match it. */
+  rankAgainst?: MatchInput;
 }
 
 export type SearchCandidatesResponse =

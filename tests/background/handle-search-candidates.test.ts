@@ -61,6 +61,28 @@ describe('handleSearchCandidates', () => {
     expect(result).toMatchObject({ ok: false, reason: 'rate-limited' });
   });
 
+  it('ranks results against the detected song, synced before plain on the same song', async () => {
+    const unrelated: LrclibRecord = { ...base, id: 10, trackName: 'Champagne Supernova', duration: 451 };
+    const exactPlain: LrclibRecord = { ...base, id: 11, syncedLyrics: null };
+    const exactSynced: LrclibRecord = { ...base, id: 12 };
+    const result = await handleSearchCandidates(
+      { type: 'SEARCH_CANDIDATES', query: 'oasis', rankAgainst: { artist: 'Oasis', track: 'Wonderwall', durationSec: 258 } },
+      async () => [unrelated, exactPlain, exactSynced],
+    );
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.candidates.map((c) => c.id)).toEqual([12, 11, 10]);
+  });
+
+  it('keeps LRCLIB order when there is no detected song to rank against', async () => {
+    const unrelated: LrclibRecord = { ...base, id: 10, trackName: 'Champagne Supernova' };
+    const result = await handleSearchCandidates(
+      { type: 'SEARCH_CANDIDATES', query: 'oasis' },
+      async () => [unrelated, base],
+    );
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.candidates.map((c) => c.id)).toEqual([10, 1]);
+  });
+
   it('reports a network error', async () => {
     const result = await handleSearchCandidates(
       { type: 'SEARCH_CANDIDATES', query: 'test' },
