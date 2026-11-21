@@ -80,7 +80,8 @@ const VARIANT_PATTERNS = VARIANT_WORDS.map(
 const SAME_LYRICS_EDITS = /\b(?:instrumental|inst|off[\s-]?vocal|karaoke|slowed|reverb|sped[\s-]?up|nightcore)\b\.?|伴奏/gi;
 
 export function stripSameLyricsEdits(track: string): string {
-  return track.replace(SAME_LYRICS_EDITS, ' ').replace(/\s+/g, ' ').trim();
+  // A title that IS an edit word ("Reverb", "Karaoke") keeps its name.
+  return track.replace(SAME_LYRICS_EDITS, ' ').replace(/\s+/g, ' ').trim() || track;
 }
 
 // No \b before Thai: \b only sees ASCII word characters.

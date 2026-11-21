@@ -489,6 +489,10 @@ async function load(videoId: string, gen: number): Promise<void> {
       return;
     }
 
+    // Undo an earlier auto-fold from a not-found on this same panel (reload path).
+    panel.setCollapsedLabel('Lyrics');
+    panel.setCollapsed(panelCollapsed);
+
     console.log(
       `[karaoke] load OK "${response.record.trackName} / ${response.record.artistName}"`,
       `lrclibId=${response.lrclibId} offsetSec=${response.offsetSec} scrollSpeed=${response.scrollSpeed}`,

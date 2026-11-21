@@ -1,4 +1,4 @@
-import { stripSameLyricsEdits } from './match-scorer';
+import { stripSameLyricsEdits, isTranslatedVersion } from './match-scorer';
 
 export interface ParsedTitle {
   artist: string | null;
@@ -140,14 +140,25 @@ export function normalizeTitleCandidates(rawTitle: string): ParsedTitle[] {
 
 /** `(…)`, `[…]` and `【…】` segments. CJK corner quotes 「」 often ARE the title, so they stay. */
 const BRACKETED = /\([^)]*\)|\[[^\]]*\]|【[^】]*】/g;
+/**
+ * A bracket the scorer still needs: a different recording (live, remix…) must
+ * keep its variant penalty, and a translated version must keep its hard reject.
+ * Stripping "(Thai Version)" let a Thai cover match the English original.
+ */
+const MEANINGFUL_BRACKET = /\b(?:live|acoustic|remix|session)\b/i;
 const HASHTAG = /#\S+/g;
-const COVER_TAIL = /\bcover(?:ed)?\b(?:\s+by\b.*)?/i;
+/** Only a credit ("cover by X", "covered by X"): "Cover Me" and "Covered in Snow" are titles. */
+const COVER_CREDIT = /\bcover(?:ed)?\s+by\b.*/i;
 
 function coreField(field: string): string {
   const core = stripSameLyricsEdits(
-    field.split(' | ')[0]!.replace(HASHTAG, ' ').replace(BRACKETED, ' ').replace(COVER_TAIL, ' '),
+    field
+      .split(' | ')[0]!
+      .replace(HASHTAG, ' ')
+      .replace(BRACKETED, (seg) => (MEANINGFUL_BRACKET.test(seg) || isTranslatedVersion(seg) ? seg : ' '))
+      .replace(COVER_CREDIT, ' '),
   );
-  return core || field;
+  return core.replace(/\s+/g, ' ').trim() || field;
 }
 
 /**

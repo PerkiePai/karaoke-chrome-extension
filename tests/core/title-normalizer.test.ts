@@ -296,6 +296,28 @@ describe('coreReading', () => {
     expect(coreReading({ artist: null, track: '【MV】' })).toEqual({ artist: null, track: '【MV】' });
   });
 
+  // Final review: these brackets carry meaning the scorer still needs.
+  it('keeps a bracketed translated-version marker', () => {
+    expect(coreReading({ artist: 'The Cab', track: 'Angel With A Shotgun (Thai Version)' }))
+      .toEqual({ artist: 'The Cab', track: 'Angel With A Shotgun (Thai Version)' });
+    expect(coreReading({ artist: 'The Cab', track: 'Angel With A Shotgun (เวอร์ชั่นไทย)' }))
+      .toEqual({ artist: 'The Cab', track: 'Angel With A Shotgun (เวอร์ชั่นไทย)' });
+  });
+
+  it('keeps a bracketed live/remix/acoustic tag', () => {
+    expect(coreReading({ artist: 'Muse', track: 'Hysteria (Live at Wembley)' }))
+      .toEqual({ artist: 'Muse', track: 'Hysteria (Live at Wembley)' });
+    expect(coreReading({ artist: 'Dua Lipa', track: 'Levitating (Remix)' }))
+      .toEqual({ artist: 'Dua Lipa', track: 'Levitating (Remix)' });
+  });
+
+  it('keeps song titles that merely contain the word cover', () => {
+    expect(coreReading({ artist: 'Bruce Springsteen', track: 'Cover Me' }))
+      .toEqual({ artist: 'Bruce Springsteen', track: 'Cover Me' });
+    expect(coreReading({ artist: 'Band', track: 'Covered in Snow' }))
+      .toEqual({ artist: 'Band', track: 'Covered in Snow' });
+  });
+
   it('keeps a title quoted in CJK corner brackets', () => {
     expect(coreReading({ artist: '9Lana', track: '「右ポケット」' })).toEqual({ artist: '9Lana', track: '「右ポケット」' });
   });

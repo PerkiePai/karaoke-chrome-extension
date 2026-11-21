@@ -322,6 +322,11 @@ describe('pickBestScored — same-lyrics edits and translated versions', () => {
     expect(pickBestScored(want('The Cab', 'Angel With A Shotgun Thai.ver'), [rec('Angel With A Shotgun', 'The Cab')])).toBeNull();
   });
 
+  it('still matches a song whose whole title is an edit word', () => {
+    expect(pickBestScored(want('Artist', 'Reverb'), [rec('Reverb', 'Artist')])).not.toBeNull();
+    expect(pickBestScored(want('Drake', 'Karaoke'), [rec('Karaoke', 'Drake')])).not.toBeNull();
+  });
+
   it('never matches a "(Thai Version)" cover to the original record', () => {
     expect(pickBestScored(want('The Cab', 'Angel With A Shotgun (Thai Version)'), [rec('Angel With A Shotgun', 'The Cab')])).toBeNull();
   });

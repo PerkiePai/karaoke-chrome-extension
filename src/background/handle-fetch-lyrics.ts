@@ -63,7 +63,7 @@ export async function handleFetchLyrics(
       ];
       // Same gates as a fresh search (pickBestScored), so a rule added there —
       // e.g. translated covers — also evicts a record cached before it existed.
-      const cacheHit = allReadings
+      const cacheHit = [...allReadings, ...allReadings.map(coreReading)]
         .map(({ artist, track }) => pickBestScored({ artist, track, durationSec: request.durationSec }, [cached]))
         .reduce<ScoredCandidate | null>((best, hit) => (hit && (!best || hit.score > best.score) ? hit : best), null);
       if (cacheHit) {

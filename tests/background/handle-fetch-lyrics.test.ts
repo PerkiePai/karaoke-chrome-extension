@@ -208,6 +208,30 @@ describe('handleFetchLyrics — retry chain', () => {
     expect(await isNotFoundCached(s, noisy.videoId)).toBe(false);
   });
 
+  it('reports not-found for a bracketed (Thai Version) cover when every query returns the original', async () => {
+    const original: LrclibRecord = { ...wonderwall, id: 7, trackName: 'Angel With A Shotgun', artistName: 'The Cab', duration: 225 };
+    const result = await handleFetchLyrics(
+      { ...request, artist: 'The Cab', track: 'Angel With A Shotgun (Thai Version)', durationSec: 225 },
+      async () => [original],
+    );
+    expect(result).toMatchObject({ ok: false, reason: 'not-found' });
+  });
+
+  // Eval row pMYaW7IcJw4: only the core reading matches this record.
+  it('serves a record found via the core reading from cache on revisit, without searching', async () => {
+    const s = memoryStorage();
+    const guessWho: LrclibRecord = { ...wonderwall, id: 18437028, trackName: 'เธอ ๆ เพื่อนเราชอบ (Guess Who?)', artistName: 'SERIOUS BACON', duration: 186 };
+    const raw = { artist: '【cover】เธอ ๆ เพื่อนเราชอบ (Guess Who?)', track: 'SERIOUS BACON【Poru】#arproject' };
+    const req: FetchLyricsRequest = { ...request, videoId: 'pMYaW7IcJw4', ...raw, durationSec: 184, alternates: [{ artist: raw.track, track: raw.artist }] };
+    const first = await handleFetchLyrics(req, async () => [guessWho], s);
+    expect(first).toMatchObject({ ok: true, lrclibId: 18437028 });
+    await writeVideoMeta(s, req.videoId, { lrclibId: 18437028, offsetSec: 0 });
+    let calls = 0;
+    const again = await handleFetchLyrics(req, async () => { calls++; return []; }, s);
+    expect(calls).toBe(0);
+    expect(again).toMatchObject({ ok: true, record: guessWho });
+  });
+
   it('serves a user-picked record without searching at all', async () => {
     const s = memoryStorage();
     await s.set({ 'lc:99': wonderwall });
