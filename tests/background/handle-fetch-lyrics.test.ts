@@ -3,7 +3,7 @@ import { handleFetchLyrics } from '../../src/background/handle-fetch-lyrics';
 import { LrclibRateLimitError } from '../../src/lrclib/client';
 import type { FetchLyricsRequest } from '../../src/messaging/types';
 import type { LrclibRecord } from '../../src/core/types';
-import { readLyricsCache, readVideoMeta, writeVideoMeta, type StorageLike } from '../../src/background/storage';
+import { readLyricsCache, readVideoMeta, writeVideoMeta, isNotFoundCached, writeUserPicked, type StorageLike } from '../../src/background/storage';
 
 const request: FetchLyricsRequest = {
   type: 'FETCH_LYRICS',
@@ -150,6 +150,80 @@ describe('handleFetchLyrics with alternate readings', () => {
         alternates: [{ artist: 'LOSO', track: 'คืนจันทร์' }],
       },
       async () => [unrelated],
+    );
+    expect(result).toMatchObject({ ok: false, reason: 'not-found' });
+  });
+});
+
+describe('handleFetchLyrics — retry chain', () => {
+  const memoryStorage = (): StorageLike => {
+    const store = new Map<string, unknown>();
+    return {
+      async get(keys) {
+        const r: Record<string, unknown> = {};
+        for (const k of keys) { if (store.has(k)) r[k] = store.get(k); }
+        return r;
+      },
+      async set(items) { for (const [k, v] of Object.entries(items)) store.set(k, v); },
+      async remove(keys) { for (const k of keys) store.delete(k); },
+    };
+  };
+  // Full query "Oasis Wonderwall Official MV"; core query "Oasis Wonderwall".
+  const noisy: FetchLyricsRequest = { ...request, track: 'Wonderwall | Official MV' };
+
+  it('retries with the core query when the full query finds nothing', async () => {
+    const queries: string[] = [];
+    const result = await handleFetchLyrics(noisy, async (q) => {
+      queries.push(q);
+      return q === 'Oasis Wonderwall' ? [wonderwall] : [];
+    });
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+    expect(queries).toEqual(['Oasis Wonderwall Official MV', 'Oasis Wonderwall']);
+  });
+
+  it('stops after the first query when it already matches', async () => {
+    let calls = 0;
+    await handleFetchLyrics(noisy, async () => { calls++; return [wonderwall]; });
+    expect(calls).toBe(1);
+  });
+
+  it('caches not-found only after every query in the chain missed', async () => {
+    const s = memoryStorage();
+    let calls = 0;
+    const result = await handleFetchLyrics(noisy, async () => { calls++; return []; }, s);
+    expect(result).toMatchObject({ ok: false, reason: 'not-found' });
+    expect(calls).toBe(2);
+    expect(await isNotFoundCached(s, noisy.videoId)).toBe(true);
+  });
+
+  it('returns rate-limited mid-chain without caching not-found', async () => {
+    const s = memoryStorage();
+    let calls = 0;
+    const result = await handleFetchLyrics(noisy, async () => {
+      calls++;
+      if (calls === 2) throw new LrclibRateLimitError(30);
+      return [];
+    }, s);
+    expect(result).toMatchObject({ ok: false, reason: 'rate-limited' });
+    expect(await isNotFoundCached(s, noisy.videoId)).toBe(false);
+  });
+
+  it('serves a user-picked record without searching at all', async () => {
+    const s = memoryStorage();
+    await s.set({ 'lc:99': wonderwall });
+    await writeVideoMeta(s, noisy.videoId, { lrclibId: 99, offsetSec: 0 });
+    await writeUserPicked(s, noisy.videoId);
+    let calls = 0;
+    const result = await handleFetchLyrics({ ...noisy, track: 'Something Unrelated' }, async () => { calls++; return []; }, s);
+    expect(calls).toBe(0);
+    expect(result).toMatchObject({ ok: true, record: wonderwall });
+  });
+
+  it('reports not-found for a translated cover even when every query returns the original', async () => {
+    const original: LrclibRecord = { ...wonderwall, id: 7, trackName: 'Angel With A Shotgun', artistName: 'The Cab', duration: 225 };
+    const result = await handleFetchLyrics(
+      { ...request, artist: 'The Cab', track: 'Angel With A Shotgun (ทูตสรรค์ที่มาพร้อมลูกซอง) Thai.ver | Covered by Aino Wuwu', durationSec: 225 },
+      async () => [original],
     );
     expect(result).toMatchObject({ ok: false, reason: 'not-found' });
   });

@@ -1,3 +1,5 @@
+import { stripSameLyricsEdits } from './match-scorer';
+
 export interface ParsedTitle {
   artist: string | null;
   track: string;
@@ -134,4 +136,32 @@ export function normalizeTitleCandidates(rawTitle: string): ParsedTitle[] {
   const primary = normalizeTitle(rawTitle);
   if (primary.artist === null) return [primary];
   return [primary, { artist: primary.track, track: primary.artist }];
+}
+
+/** `(…)`, `[…]` and `【…】` segments. CJK corner quotes 「」 often ARE the title, so they stay. */
+const BRACKETED = /\([^)]*\)|\[[^\]]*\]|【[^】]*】/g;
+const HASHTAG = /#\S+/g;
+const COVER_TAIL = /\bcover(?:ed)?\b(?:\s+by\b.*)?/i;
+
+function coreField(field: string): string {
+  const core = stripSameLyricsEdits(
+    field.split(' | ')[0]!.replace(HASHTAG, ' ').replace(BRACKETED, ' ').replace(COVER_TAIL, ' '),
+  );
+  return core || field;
+}
+
+/**
+ * A reading with the noise that sits INSIDE its fields removed: a ` | ` tail,
+ * hashtags, bracketed asides, a cover credit, and same-lyrics edit tags
+ * (instrumental, 伴奏, slowed…). LRCLIB's `q=` requires every token, so one
+ * such tail zeroes the result set (`…Thai.ver | Covered by Aino Wuwu`,
+ * `SERIOUS BACON【Poru】#arproject`). Translated-version markers are kept on
+ * purpose — they must still block a match against the original. A field that
+ * would end up empty keeps its original text.
+ */
+export function coreReading(reading: ParsedTitle): ParsedTitle {
+  return {
+    artist: reading.artist === null ? null : coreField(reading.artist),
+    track: coreField(reading.track),
+  };
 }

@@ -1,4 +1,28 @@
 import { VARIANT_WORDS } from './match-scorer';
+import { coreReading, type ParsedTitle } from './title-normalizer';
+
+/** LRCLIB is a free, fair-use API: never more than this many searches per video. */
+export const MAX_SEARCH_REQUESTS = 3;
+
+/**
+ * The searches to try for one video, in order, until one finds a match: each
+ * reading's full query, then its core query (see `coreReading`). The first is
+ * always today's single query, so nothing that matched before can stop
+ * matching. A query with the same words as an earlier one is dropped: LRCLIB
+ * requires every word in any order, so a swapped reading is the same search.
+ */
+export function buildQueryChain(readings: ParsedTitle[]): string[] {
+  const seen = new Set<string>();
+  const chain: string[] = [];
+  for (const r of readings.flatMap((reading) => [reading, coreReading(reading)])) {
+    const query = buildSearchQuery(r.artist, r.track);
+    const words = query.toLowerCase().split(' ').sort().join(' ');
+    if (!query || seen.has(words)) continue;
+    seen.add(words);
+    chain.push(query);
+  }
+  return chain.slice(0, MAX_SEARCH_REQUESTS);
+}
 
 /**
  * A run of Latin letters or digits, plus punctuation that appears inside names.

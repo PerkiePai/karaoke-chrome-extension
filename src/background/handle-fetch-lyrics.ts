@@ -4,7 +4,8 @@ import {
   pickBestScored,
   type ScoredCandidate,
 } from '../core/match-scorer';
-import { buildSearchQuery } from '../core/search-query';
+import { buildQueryChain } from '../core/search-query';
+import { coreReading } from '../core/title-normalizer';
 import {
   readVideoMeta,
   readLyricsCache,
@@ -106,35 +107,40 @@ export async function handleFetchLyrics(
     ...(request.alternates ?? []),
   ];
 
-  const query = buildSearchQuery(request.artist, request.track);
-
-  let candidates: LrclibRecord[];
-  try {
-    candidates = await search(query);
-  } catch (error) {
-    if (error instanceof LrclibRateLimitError) {
-      return {
-        ok: false,
-        reason: 'rate-limited',
-        message: `Rate limited by lrclib. Try again in ${error.retryAfterSec}s.`,
-      };
-    }
-    return {
-      ok: false,
-      reason: 'network',
-      message: error instanceof Error ? error.message : 'Network request failed.',
-    };
-  }
-
-  const usable = candidates.filter(hasUsableLyrics);
+  // Score against the core readings too: the core query finds records whose
+  // names lack the noise the raw reading still carries.
+  const scoringReadings = [...readings, ...readings.map(coreReading)];
 
   let best: ScoredCandidate | null = null;
-  for (const reading of readings) {
-    const scored = pickBestScored(
-      { artist: reading.artist, track: reading.track, durationSec: request.durationSec },
-      usable,
-    );
-    if (scored && (best === null || scored.score > best.score)) best = scored;
+  for (const query of buildQueryChain(readings)) {
+    let candidates: LrclibRecord[];
+    try {
+      candidates = await search(query);
+    } catch (error) {
+      // Stop the chain and cache nothing: a transient failure is not a miss.
+      if (error instanceof LrclibRateLimitError) {
+        return {
+          ok: false,
+          reason: 'rate-limited',
+          message: `Rate limited by lrclib. Try again in ${error.retryAfterSec}s.`,
+        };
+      }
+      return {
+        ok: false,
+        reason: 'network',
+        message: error instanceof Error ? error.message : 'Network request failed.',
+      };
+    }
+
+    const usable = candidates.filter(hasUsableLyrics);
+    for (const reading of scoringReadings) {
+      const scored = pickBestScored(
+        { artist: reading.artist, track: reading.track, durationSec: request.durationSec },
+        usable,
+      );
+      if (scored && (best === null || scored.score > best.score)) best = scored;
+    }
+    if (best) break;
   }
 
   if (!best) {

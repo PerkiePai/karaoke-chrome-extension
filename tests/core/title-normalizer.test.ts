@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTitle, normalizeTitleCandidates } from '../../src/core/title-normalizer';
+import { normalizeTitle, normalizeTitleCandidates, coreReading } from '../../src/core/title-normalizer';
 
 describe('normalizeTitle', () => {
   it('splits artist and track on a hyphen and drops [Official MV]', () => {
@@ -267,5 +267,36 @@ describe('normalizeTitleCandidates', () => {
   it('always leads with the same reading normalizeTitle returns', () => {
     const raw = 'Three Man Down - คนไม่จำเป็น | Official MV';
     expect(normalizeTitleCandidates(raw)[0]).toEqual(normalizeTitle(raw));
+  });
+});
+
+// Real readings from the search eval (scripts/search-eval.csv).
+describe('coreReading', () => {
+  it('cuts a pipe tail and a bracketed translation, keeping the translated-version marker', () => {
+    expect(coreReading({ artist: 'The Cab', track: 'Angel With A Shotgun (ทูตสรรค์ที่มาพร้อมลูกซอง) Thai.ver | Covered by Aino Wuwu' }))
+      .toEqual({ artist: 'The Cab', track: 'Angel With A Shotgun Thai.ver' });
+  });
+
+  it('drops cover tags, hashtags and bracketed performer names', () => {
+    expect(coreReading({ artist: '【cover】เธอ ๆ เพื่อนเราชอบ (Guess Who?)', track: 'SERIOUS BACON【Poru】#arproject' }))
+      .toEqual({ artist: 'เธอ ๆ เพื่อนเราชอบ', track: 'SERIOUS BACON' });
+  });
+
+  it('drops a bracketed 伴奏 (accompaniment) tag', () => {
+    expect(coreReading({ artist: '一颗狼星', track: '无人区玫瑰 (伴奏)' }))
+      .toEqual({ artist: '一颗狼星', track: '无人区玫瑰' });
+  });
+
+  it('drops a subtitle tag and a pipe tail', () => {
+    expect(coreReading({ artist: '[THAISUB] กุหลาบแดนร้างผู้คน', track: '无人区玫瑰 - 一颗狼星 | เพลงจีนแปลไทย' }))
+      .toEqual({ artist: 'กุหลาบแดนร้างผู้คน', track: '无人区玫瑰 - 一颗狼星' });
+  });
+
+  it('keeps a field whose whole text is a bracket rather than emptying it', () => {
+    expect(coreReading({ artist: null, track: '【MV】' })).toEqual({ artist: null, track: '【MV】' });
+  });
+
+  it('keeps a title quoted in CJK corner brackets', () => {
+    expect(coreReading({ artist: '9Lana', track: '「右ポケット」' })).toEqual({ artist: '9Lana', track: '「右ポケット」' });
   });
 });

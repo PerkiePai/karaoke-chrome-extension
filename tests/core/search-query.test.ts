@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSearchQuery } from '../../src/core/search-query';
+import { buildSearchQuery, buildQueryChain, MAX_SEARCH_REQUESTS } from '../../src/core/search-query';
 
 describe('buildSearchQuery', () => {
   it('keeps a Western query unchanged in substance', () => {
@@ -179,5 +179,20 @@ describe('buildSearchQuery — non-ASCII Latin, Cyrillic and Greek letters', () 
 
   it('still drops the romanized nickname of a predominantly-Thai field', () => {
     expect(buildSearchQuery('Atom ชนกันต์', 'PLEASE')).toBe('ชนกันต์ PLEASE');
+  });
+});
+
+describe('buildQueryChain', () => {
+  it('tries the full query first, then the core query, deduping the swapped reading', () => {
+    const track = 'Angel With A Shotgun (ทูตสรรค์ที่มาพร้อมลูกซอง) Thai.ver | Covered by Aino Wuwu';
+    expect(buildQueryChain([{ artist: 'The Cab', track }, { artist: track, track: 'The Cab' }])).toEqual([
+      'ทูตสรรค์ที่มาพร้อมลูกซอง The Cab Angel With A Shotgun Thai.ver Covered by Aino Wuwu',
+      'The Cab Angel With A Shotgun Thai.ver',
+    ]);
+  });
+
+  it(`never returns more than ${MAX_SEARCH_REQUESTS} queries`, () => {
+    const readings = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo'].map((track) => ({ artist: 'Band', track }));
+    expect(buildQueryChain(readings)).toHaveLength(3);
   });
 });
