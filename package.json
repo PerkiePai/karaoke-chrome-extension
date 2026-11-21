@@ -9,7 +9,8 @@
     "build": "npm run build:content && npm run build:background",
     "test": "cross-env NODE_OPTIONS=--experimental-require-module vitest run",
     "test:watch": "cross-env NODE_OPTIONS=--experimental-require-module vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval:search": "esbuild scripts/search-eval.ts --bundle --platform=node --format=esm --outfile=.eval/search-eval.mjs --log-level=error && node .eval/search-eval.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.6",

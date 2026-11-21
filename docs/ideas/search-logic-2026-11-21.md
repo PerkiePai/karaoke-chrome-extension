@@ -12,6 +12,12 @@ Real pipeline (`handleFetchLyrics` + live LRCLIB) replayed over the 34 `mix_vide
 - Misses are dominated by **over-long queries**: LRCLIB's `q=` requires *every* token to appear (implicit AND), so tails like `Thai.ver Covered by Aino Wuwu`, `Poru arproject`, `伴奏`, `CU Chorus Concert The Journey of Love` zero the result set.
 - Tokenizer bug: `LATIN_RUN` is ASCII-only, so `supїdo` → `sup do` (same for `é`, `ñ`… e.g. `Beyoncé` → `Beyonc`).
 
+## Eval
+`npm run eval:search` — 77 labeled videos (`scripts/search-eval.csv`), live YouTube + LRCLIB.
+- **Baseline (2026-11-22, before changes):** `SUMMARY correct=32 wrong=1 miss=15 none-ok=29 unlabeled=0 error=0 requests=77`
+  - wrong: `blue — yung kai` → "blue (oiia spinning cat version) / Oiia Cat".
+  - Run-to-run noise: `jzi6RNVEOtA` (Hai Yorokonde) hit in one baseline run and missed in the next with identical code.
+
 ## LRCLIB facts (scouted)
 - `/api/search`: max 20, no paging; `q` = all tokens must match some field; structured `track_name` = exact phrase, `artist_name` = all tokens any order. Thai with no spaces = one token (whole-run equality).
 - `/api/get`: exact normalized equality on track+artist(+album), duration ±2s; can return the wrong album's record (lrclib#26) → must still pass local gates.
