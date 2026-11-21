@@ -322,6 +322,7 @@ async function activate(videoId: string): Promise<void> {
     disposeAll();
     panel!.setStatus(plan.status);
     panel!.setLines(plan.lines, plan.synced);
+    panel!.showCorrectBar(true); // keep the escape hatch after a correction, not just from the prior load
 
     currentLrclibId = record.id;
     currentRecord = record;

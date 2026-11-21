@@ -36,3 +36,8 @@ export function advanceAutoScrollTopPx(
   const deltaPx = (deltaMs / durationMs) * speed * extentPx;
   return Math.max(0, Math.min(extentPx, currentTopPx + deltaPx));
 }
+
+/** True when the list sits more than `thresholdPx` from where video time puts it. */
+export function isScrolledAwayPx(currentTopPx: number, targetPx: number, thresholdPx: number): boolean {
+  return Math.abs(currentTopPx - targetPx) > thresholdPx;
+}

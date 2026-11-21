@@ -20,6 +20,8 @@ function mockPanel(): PanelHandle {
     onLineClick: vi.fn(),
     setActiveLine: vi.fn(),
     onManualScroll: vi.fn(),
+    setBackToCurrentVisible: vi.fn(),
+    onBackToCurrent: vi.fn(),
     setOffsetControls: vi.fn(),
     onOffsetNudge: vi.fn(),
     onOffsetSet: vi.fn(),
@@ -236,6 +238,67 @@ describe('startSyncLoop', () => {
     Object.defineProperty(v, 'currentTime', { value: 1.1, configurable: true });
     raf.runFrame();
     expect(panel.setActiveLine).toHaveBeenLastCalledWith(1, true);
+  });
+
+  describe('back-to-current pill', () => {
+    const handlers = (panel: PanelHandle) => ({
+      manualScroll: (panel.onManualScroll as ReturnType<typeof vi.fn>).mock.calls[0]![0] as () => void,
+      backToCurrent: (panel.onBackToCurrent as ReturnType<typeof vi.fn>).mock.calls[0]![0] as () => void,
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('shows the pill on a manual scroll', () => {
+      const panel = mockPanel();
+      startSyncLoop(video(), panel, LINES);
+      handlers(panel).manualScroll();
+      expect(panel.setBackToCurrentVisible).toHaveBeenLastCalledWith(true);
+    });
+
+    it('hides the pill on the first tick after the suspension window lapses', () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      const v = video();
+      const panel = mockPanel();
+      startSyncLoop(v, panel, LINES);
+      v.dispatchEvent(new Event('play'));
+      handlers(panel).manualScroll();
+
+      vi.advanceTimersByTime(1000);
+      raf.runFrame();
+      expect(panel.setBackToCurrentVisible).toHaveBeenLastCalledWith(true);
+
+      vi.advanceTimersByTime(2500);
+      raf.runFrame();
+      expect(panel.setBackToCurrentVisible).toHaveBeenLastCalledWith(false);
+    });
+
+    it('clicking the pill re-centers the current line, resumes auto-scroll and hides the pill', () => {
+      const v = video();
+      const panel = mockPanel();
+      startSyncLoop(v, panel, LINES); // initial apply → active index 0
+      const h = handlers(panel);
+      h.manualScroll();
+      vi.clearAllMocks();
+
+      h.backToCurrent();
+      expect(panel.setActiveLine).toHaveBeenCalledWith(0, true);
+      expect(panel.setBackToCurrentVisible).toHaveBeenLastCalledWith(false);
+
+      v.dispatchEvent(new Event('play'));
+      Object.defineProperty(v, 'currentTime', { value: 1.1, configurable: true });
+      raf.runFrame();
+      expect(panel.setActiveLine).toHaveBeenLastCalledWith(1, true);
+    });
+
+    it('stop() detaches the pill callback and hides the pill', () => {
+      const panel = mockPanel();
+      const handle = startSyncLoop(video(), panel, LINES);
+      handle.stop();
+      expect(panel.onBackToCurrent).toHaveBeenCalledTimes(2);
+      expect(panel.setBackToCurrentVisible).toHaveBeenLastCalledWith(false);
+    });
   });
 
   it('setOffsetMs updates the effective time and triggers an immediate apply', () => {

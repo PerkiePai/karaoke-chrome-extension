@@ -88,8 +88,8 @@ export const PANEL_STYLES = `
   .kx-lines {
     list-style: none;
     margin: 0;
-    /* Fixed to roughly 5 lines' worth of height (~40px/line at the default
-       15px/1.9 sizing) so the window stays compact instead of growing with
+    /* Fixed to roughly 5 lines' worth of height (~35px/line at the default
+       15px/1.4 sizing + padding) so the window stays compact instead of growing with
        the whole song. flex: none so the flex column never stretches or
        shrinks it. Top/bottom padding is half that height so the first/last
        lines can still be scrolled up to the vertical center — without it,
@@ -100,34 +100,78 @@ export const PANEL_STYLES = `
     overflow-y: auto;
     font-size: 14px;
     line-height: 1.9;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
-    mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
   }
   .kx-line {
     color: #a7a7a7;
-    padding: 6px 0;
+    /* Own line-height (not the list's 1.9) so a wrapped long line stays one
+       visual unit; horizontal padding gives the hover background room. */
+    line-height: 1.4;
+    padding: 7px 8px;
+    border-radius: 6px;
     font-size: 15px;
     font-weight: 600;
-    opacity: 0.55;
+    opacity: 0.5;
     transition:
       color 0.4s cubic-bezier(0.22, 1, 0.36, 1),
       opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-      font-size 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      font-size 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 0.15s ease;
   }
   .kx-line-active {
     color: #ffffff;
     opacity: 1;
     font-size: 20px;
+    font-weight: 700;
   }
+  .kx-back-to-current {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    background: #272727;
+    border: 1px solid #555;
+    border-radius: 999px;
+    color: #f1f1f1;
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    padding: 3px 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  }
+  .kx-back-to-current:hover { background: #3a3a3a; border-color: #888; }
   .kx-line-clickable { cursor: pointer; }
-  .kx-line-clickable:hover { color: #ffffff; opacity: 0.85; }
+  .kx-line-clickable:hover { color: #ffffff; opacity: 0.9; background-color: rgba(255, 255, 255, 0.08); }
   .kx-hidden { display: none !important; }
   .kx-controls-row {
     display: flex;
     align-items: center;
+    gap: 8px;
+    padding: 2px 0 4px;
     border-bottom: 1px solid #303030;
     font-size: 12px;
     color: #aaa;
+  }
+  /* One shared control-button look so offset, speed and "Not this one?" all
+     read as tappable at a glance. */
+  .kx-offset button, .kx-speed button, .kx-not-this {
+    background: none;
+    border: 1px solid #555;
+    color: #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 1px 7px;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1.5;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .kx-offset button:hover, .kx-speed button:hover, .kx-not-this:hover {
+    color: #fff;
+    border-color: #aaa;
+    background-color: #2a2a2a;
   }
   .kx-offset {
     display: flex;
@@ -135,17 +179,6 @@ export const PANEL_STYLES = `
     gap: 6px;
     padding: 4px 0 2px;
   }
-  .kx-offset button {
-    background: none;
-    border: 1px solid #555;
-    color: #aaa;
-    border-radius: 4px;
-    cursor: pointer;
-    padding: 1px 6px;
-    font-size: 11px;
-    line-height: 1.5;
-  }
-  .kx-offset button:hover { color: #fff; border-color: #aaa; }
   .kx-offset-value {
     min-width: 56px; width: 56px; text-align: center; font-variant-numeric: tabular-nums;
     background: none; border: none; color: inherit; font: inherit; cursor: text;
@@ -153,17 +186,7 @@ export const PANEL_STYLES = `
   }
   .kx-offset-value:hover { background: #2a2a2a; }
   .kx-offset-value:focus { outline: 1px solid #555; background: #1a1a1a; cursor: text; }
-  .kx-not-this {
-    background: none;
-    border: none;
-    color: #888;
-    font-size: 11px;
-    cursor: pointer;
-    padding: 2px 0 2px 6px;
-    text-decoration: underline;
-    margin-left: auto;
-  }
-  .kx-not-this:hover { color: #aaa; }
+  .kx-not-this { margin-left: auto; }
   .kx-search-overlay {
     position: absolute;
     top: 0; left: 0; right: 0;
@@ -253,17 +276,6 @@ export const PANEL_STYLES = `
     font-size: 12px;
     color: #aaa;
   }
-  .kx-speed button {
-    background: none;
-    border: 1px solid #555;
-    color: #aaa;
-    border-radius: 4px;
-    cursor: pointer;
-    padding: 1px 6px;
-    font-size: 11px;
-    line-height: 1.5;
-  }
-  .kx-speed button:hover { color: #fff; border-color: #aaa; }
   .kx-speed-value { min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
   .kx-scroll-pause { margin-left: 4px; }
 `;

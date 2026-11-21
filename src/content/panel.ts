@@ -40,6 +40,13 @@ export interface PanelHandle {
    * hand (wheel or touch) — not additive, since only one sync loop is ever
    * active for a panel at a time. */
   onManualScroll(callback: () => void): void;
+  /** Shows or hides the "↓ Current line" pill over the lyric list — shown by
+   *  the active scroll loop while the list is scrolled away from the current
+   *  position. */
+  setBackToCurrentVisible(visible: boolean): void;
+  /** Replaces the callback fired when the "↓ Current line" pill is clicked —
+   *  single slot, like onManualScroll, since only one loop drives a panel. */
+  onBackToCurrent(callback: () => void): void;
   /** Shows or hides the ◀ ▶ offset controls and updates the displayed value.
    *  When visible=false the value argument is ignored. */
   setOffsetControls(visible: boolean, offsetSec?: number): void;
@@ -151,6 +158,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
         <div class="kx-status"></div>
         <button class="kx-retry kx-hidden">Retry</button>
         <ol class="kx-lines"></ol>
+        <button class="kx-back-to-current kx-hidden" title="Jump back to the current line">↓ Current line</button>
       </div>
     </div>
   `;
@@ -304,6 +312,11 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     retryListener?.();
   });
 
+  let backToCurrentListener: (() => void) | null = null;
+  find<HTMLElement>('.kx-back-to-current').addEventListener('click', () => {
+    backToCurrentListener?.();
+  });
+
   const searchInput = find<HTMLInputElement>('.kx-search-input');
 
   find<HTMLFormElement>('.kx-search-form').addEventListener('submit', (e) => {
@@ -376,6 +389,7 @@ export function mountPanel(container: HTMLElement): PanelHandle {
           li.className = synced ? 'kx-line kx-line-clickable' : 'kx-line kx-line-active';
           li.textContent = line.text;
           if (synced) {
+            li.title = 'Jump to this line';
             li.addEventListener('click', () => lineClickListener?.(index));
           }
           return li;
@@ -409,6 +423,12 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     onManualScroll(callback) {
       manualScrollListener = callback;
+    },
+    setBackToCurrentVisible(visible) {
+      find<HTMLElement>('.kx-back-to-current').classList.toggle('kx-hidden', !visible);
+    },
+    onBackToCurrent(callback) {
+      backToCurrentListener = callback;
     },
     setOffsetControls(visible, offsetSec) {
       const el = find<HTMLElement>('.kx-offset');

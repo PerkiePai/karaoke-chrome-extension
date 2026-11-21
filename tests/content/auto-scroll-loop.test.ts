@@ -24,6 +24,8 @@ function mockPanel(extentPx = 1000, initialScrollTop = 0, roundsToInteger = fals
     onLineClick: vi.fn(),
     setActiveLine: vi.fn(),
     onManualScroll: vi.fn(),
+    setBackToCurrentVisible: vi.fn(),
+    onBackToCurrent: vi.fn(),
     setOffsetControls: vi.fn(),
     onOffsetNudge: vi.fn(),
     onOffsetSet: vi.fn(),
@@ -289,6 +291,79 @@ describe('startAutoScrollLoop', () => {
     Object.defineProperty(v, 'currentTime', { value: 6, configurable: true }); // 1s past the 5s lead-in, at 2x → 10px
     raf.runFrame();
     expect(panel.setScrollTop).toHaveBeenLastCalledWith(310);
+  });
+
+  describe('back-to-current pill', () => {
+    const backToCurrent = (panel: PanelHandle) =>
+      (panel.onBackToCurrent as ReturnType<typeof vi.fn>).mock.calls[0]![0] as () => void;
+
+    it('shows the pill once a hand scroll puts the list away from the video-time position', () => {
+      const v = video();
+      const { panel, forceScrollTop } = mockPanel(1000);
+      startAutoScrollLoop(v, panel, 210); // 200s effective window, 1000px extent
+      v.dispatchEvent(new Event('play'));
+      raf.runFrame();
+      expect(panel.setBackToCurrentVisible).not.toHaveBeenCalledWith(true);
+
+      forceScrollTop(700); // target at t=0 is 0px
+      raf.runFrame();
+      expect(panel.setBackToCurrentVisible).toHaveBeenLastCalledWith(true);
+    });
+
+    it('does not show the pill for a hand scroll within the threshold', () => {
+      const v = video();
+      const { panel, forceScrollTop } = mockPanel(1000);
+      startAutoScrollLoop(v, panel, 210);
+      v.dispatchEvent(new Event('play'));
+      forceScrollTop(10);
+      raf.runFrame();
+      expect(panel.setBackToCurrentVisible).not.toHaveBeenCalledWith(true);
+    });
+
+    it('does not show the pill after a speed change alone (no hand scroll)', () => {
+      const v = video();
+      const { panel } = mockPanel(1000);
+      const handle = startAutoScrollLoop(v, panel, 210);
+      Object.defineProperty(v, 'currentTime', { value: 105, configurable: true });
+      v.dispatchEvent(new Event('seeked')); // snapped to 500px
+      v.dispatchEvent(new Event('play'));
+      handle.setSpeed(2); // video-time target now 1000px, but the sweep doesn't jump
+      raf.runFrame();
+      expect(panel.setBackToCurrentVisible).not.toHaveBeenCalledWith(true);
+    });
+
+    it('clicking the pill snaps to the video-time position and hides the pill', () => {
+      const v = video();
+      const { panel, forceScrollTop } = mockPanel(1000);
+      startAutoScrollLoop(v, panel, 210);
+      v.dispatchEvent(new Event('play'));
+      Object.defineProperty(v, 'currentTime', { value: 55, configurable: true }); // quarter → 250px
+      forceScrollTop(900);
+      raf.runFrame();
+      const click = backToCurrent(panel);
+      vi.clearAllMocks();
+
+      click();
+      expect(panel.setScrollTop).toHaveBeenLastCalledWith(250);
+      expect(panel.setBackToCurrentVisible).toHaveBeenLastCalledWith(false);
+
+      // Stays hidden on the next frame — back in step with video time.
+      Object.defineProperty(v, 'currentTime', { value: 56, configurable: true });
+      raf.runFrame();
+      expect(panel.setBackToCurrentVisible).not.toHaveBeenCalledWith(true);
+    });
+
+    it('stop() detaches the pill callback and hides a visible pill', () => {
+      const v = video();
+      const { panel, forceScrollTop } = mockPanel(1000);
+      const handle = startAutoScrollLoop(v, panel, 210);
+      v.dispatchEvent(new Event('play'));
+      forceScrollTop(700);
+      raf.runFrame();
+      handle.stop();
+      expect(panel.onBackToCurrent).toHaveBeenCalledTimes(2);
+      expect(panel.setBackToCurrentVisible).toHaveBeenLastCalledWith(false);
+    });
   });
 
   it('stop() cancels any pending frame and removes listeners', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeAutoScrollTopPx, advanceAutoScrollTopPx } from '../../src/content/auto-scroll-engine';
+import { computeAutoScrollTopPx, advanceAutoScrollTopPx, isScrolledAwayPx } from '../../src/content/auto-scroll-engine';
 
 describe('computeAutoScrollTopPx', () => {
   it('is 0 at the start of the video', () => {
@@ -71,5 +71,18 @@ describe('advanceAutoScrollTopPx', () => {
 
   it('returns 0 when there is nothing to scroll (extent is 0)', () => {
     expect(advanceAutoScrollTopPx(500, 1000, 200_000, 0, 1)).toBe(0);
+  });
+});
+
+describe('isScrolledAwayPx', () => {
+  it('is false within the threshold, either direction', () => {
+    expect(isScrolledAwayPx(100, 100, 24)).toBe(false);
+    expect(isScrolledAwayPx(124, 100, 24)).toBe(false);
+    expect(isScrolledAwayPx(76, 100, 24)).toBe(false);
+  });
+
+  it('is true beyond the threshold, either direction', () => {
+    expect(isScrolledAwayPx(125, 100, 24)).toBe(true);
+    expect(isScrolledAwayPx(75, 100, 24)).toBe(true);
   });
 });

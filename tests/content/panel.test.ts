@@ -569,6 +569,28 @@ describe('mountPanel', () => {
       expect(cb).toHaveBeenCalledTimes(1);
     });
 
+    it('hides the back-to-current pill by default; setBackToCurrentVisible toggles it', () => {
+      const panel = mountPanel(host);
+      const pill = () => shadowOf(host).querySelector<HTMLElement>('.kx-back-to-current')!;
+      expect(pill().classList.contains('kx-hidden')).toBe(true);
+      panel.setBackToCurrentVisible(true);
+      expect(pill().classList.contains('kx-hidden')).toBe(false);
+      panel.setBackToCurrentVisible(false);
+      expect(pill().classList.contains('kx-hidden')).toBe(true);
+    });
+
+    it('onBackToCurrent fires when the pill is clicked, and is replaced (not added to) on re-register', () => {
+      const panel = mountPanel(host);
+      const first = vi.fn();
+      const second = vi.fn();
+      panel.onBackToCurrent(first);
+      panel.onBackToCurrent(second);
+      panel.setBackToCurrentVisible(true);
+      shadowOf(host).querySelector<HTMLElement>('.kx-back-to-current')!.click();
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(1);
+    });
+
     it('onResetMatch fires when the search overlay\'s Reset button is clicked', () => {
       const panel = mountPanel(host);
       const cb = vi.fn();

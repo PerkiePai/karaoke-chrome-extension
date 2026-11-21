@@ -21,7 +21,8 @@ const LC_ORDER_KEY = 'lc:order';
 const NF_PREFIX = 'nf:';
 const NF_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const UP_PREFIX = 'up:';
-export const LYRICS_CACHE_MAX = 50;
+// No eviction: personal use, relies on "unlimitedStorage" in manifest.json.
+export const LYRICS_CACHE_MAX = Infinity;
 
 /** Returns true when a valid (non-expired) not-found entry exists for this videoId. */
 export async function isNotFoundCached(

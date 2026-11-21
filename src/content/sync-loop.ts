@@ -1,6 +1,6 @@
 import type { LyricLine } from '../core/types';
 import type { PanelHandle } from './panel';
-import { createSyncEngineState, tick, notifyManualScroll } from './sync-engine';
+import { createSyncEngineState, tick, notifyManualScroll, isScrollSuspended } from './sync-engine';
 
 export interface SyncLoopHandle {
   stop(): void;
@@ -32,10 +32,27 @@ export function startSyncLoop(
   const state = createSyncEngineState();
   let offsetMs = initialOffsetMs;
   let rafId: number | null = null;
+  let pillVisible = false;
+
+  function setPill(visible: boolean): void {
+    pillVisible = visible;
+    panel.setBackToCurrentVisible(visible);
+  }
 
   function apply(): void {
-    const result = tick(state, lines, video.currentTime * 1000 + offsetMs, Date.now());
+    const now = Date.now();
+    const result = tick(state, lines, video.currentTime * 1000 + offsetMs, now);
     if (result) panel.setActiveLine(result.index, result.autoScroll);
+    // Not re-checked while paused (apply only runs per frame while playing,
+    // or on seeked) — the pill lingers until playback resumes; clicking it still works.
+    if (pillVisible && !isScrollSuspended(state.lastManualScrollAtMs, now)) setPill(false);
+  }
+
+  function centerLine(index: number): void {
+    state.lastManualScrollAtMs = null;
+    state.activeIndex = index;
+    panel.setActiveLine(index, true);
+    setPill(false);
   }
 
   function frame(): void {
@@ -56,12 +73,17 @@ export function startSyncLoop(
 
   function handleManualScroll(): void {
     notifyManualScroll(state, Date.now());
+    setPill(true);
   }
 
   video.addEventListener('play', handlePlay);
   video.addEventListener('pause', handlePause);
   video.addEventListener('seeked', apply);
   panel.onManualScroll(handleManualScroll);
+  panel.onBackToCurrent(() => {
+    if (state.activeIndex !== null) centerLine(state.activeIndex);
+    else setPill(false);
+  });
 
   apply();                          // reflect the current position immediately
   if (!video.paused) handlePlay();
@@ -73,15 +95,13 @@ export function startSyncLoop(
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('seeked', apply);
       panel.onManualScroll(() => {});
+      panel.onBackToCurrent(() => {});
+      setPill(false);
     },
     setOffsetMs(ms) {
       offsetMs = ms;
       apply();
     },
-    centerLine(index) {
-      state.lastManualScrollAtMs = null;
-      state.activeIndex = index;
-      panel.setActiveLine(index, true);
-    },
+    centerLine,
   };
 }

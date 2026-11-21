@@ -1,5 +1,5 @@
 import type { PanelHandle } from './panel';
-import { computeAutoScrollTopPx, advanceAutoScrollTopPx } from './auto-scroll-engine';
+import { computeAutoScrollTopPx, advanceAutoScrollTopPx, isScrolledAwayPx } from './auto-scroll-engine';
 
 export interface AutoScrollLoopHandle {
   stop(): void;
@@ -19,6 +19,10 @@ const MANUAL_SCROLL_EPSILON_PX = 1;
 // the full [0, duration] span onto the list — most tracks have a few
 // seconds of instrumental intro/outro with no lyrics on screen yet.
 const EDGE_PAD_SEC = 5;
+
+// How far (≈ half a line) the list must sit from the video-time position
+// before the "↓ Current line" pill appears.
+const BACK_TO_CURRENT_THRESHOLD_PX = 24;
 
 /**
  * Drives the lyrics list's scrollTop from `video`'s playback for unsynced
@@ -78,6 +82,16 @@ export function startAutoScrollLoop(
 
   let posPx = 0;
   let lastWrittenPx = 0;
+  // Only a hand scroll counts as "scrolled away": a speed change or the pause
+  // button also moves posPx off the video-time target, but on purpose.
+  let handScrolled = false;
+  let pillVisible = false;
+
+  function setPill(visible: boolean): void {
+    if (visible === pillVisible) return;
+    pillVisible = visible;
+    panel.setBackToCurrentVisible(visible);
+  }
 
   function writeScrollTop(px: number): void {
     posPx = px;
@@ -89,6 +103,8 @@ export function startAutoScrollLoop(
     const extentPx = panel.getScrollExtentPx();
     writeScrollTop(computeAutoScrollTopPx(effectiveMs(video.currentTime * 1000), effectiveDurationMs, extentPx, speed));
     lastVideoMs = video.currentTime * 1000;
+    handScrolled = false;
+    setPill(false);
   }
 
   function advance(): void {
@@ -98,14 +114,19 @@ export function startAutoScrollLoop(
       // base instead of overwriting it on the next line below.
       posPx = domTop;
       lastWrittenPx = domTop;
+      handScrolled = true;
     }
 
     const nowMs = video.currentTime * 1000;
     const deltaEffMs = effectiveMs(nowMs) - effectiveMs(lastVideoMs);
     lastVideoMs = nowMs;
+    const extentPx = panel.getScrollExtentPx();
+    if (handScrolled) {
+      const targetPx = computeAutoScrollTopPx(effectiveMs(nowMs), effectiveDurationMs, extentPx, speed);
+      setPill(isScrolledAwayPx(posPx, targetPx, BACK_TO_CURRENT_THRESHOLD_PX));
+    }
     if (paused) return;
 
-    const extentPx = panel.getScrollExtentPx();
     writeScrollTop(advanceAutoScrollTopPx(posPx, deltaEffMs, effectiveDurationMs, extentPx, speed));
   }
 
@@ -133,6 +154,7 @@ export function startAutoScrollLoop(
   video.addEventListener('pause', handlePause);
   video.addEventListener('seeked', snapToVideoTime);
   panel.onScrollPauseToggle(handlePauseToggle);
+  panel.onBackToCurrent(snapToVideoTime);
 
   snapToVideoTime();                // reflect the current position immediately
   if (!video.paused) handlePlay();
@@ -144,6 +166,8 @@ export function startAutoScrollLoop(
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('seeked', snapToVideoTime);
       panel.onScrollPauseToggle(() => {});
+      panel.onBackToCurrent(() => {});
+      setPill(false);
     },
     setSpeed(newSpeed) {
       speed = newSpeed;
