@@ -7,7 +7,7 @@ import { startAutoScrollLoop, type AutoScrollLoopHandle } from './auto-scroll-lo
 import { fetchVideoPageSignals } from './music-attribution';
 import { isConfidentlyNonMusic } from '../core/video-category';
 import { parseVideoId } from '../core/youtube-url';
-import { normalizeTitleCandidates } from '../core/title-normalizer';
+import { buildReadings } from '../core/readings';
 import type { LyricLine } from '../core/types';
 import type {
   FetchLyricsRequest,
@@ -421,11 +421,6 @@ async function load(videoId: string, gen: number): Promise<void> {
     renderedTitle = song.rawTitle;
     currentDurationSec = song.durationSec;
 
-    const titleReadings = normalizeTitleCandidates(song.rawTitle);
-    if (titleReadings[0]!.artist === null && song.channelName) {
-      console.log(`[karaoke] using channel-name fallback artist: "${song.channelName}"`);
-      titleReadings.push({ artist: song.channelName, track: titleReadings[0]!.track });
-    }
     // The Music attribution panel, when present, is authoritative label
     // metadata (the same data YouTube's own Content ID system uses) rather
     // than a guess from the raw title — so it leads the reading list. It
@@ -439,13 +434,7 @@ async function load(videoId: string, gen: number): Promise<void> {
     if (artTrack) {
       console.log(`[karaoke] using Art Track description: "${artTrack.title}" / "${artTrack.artist}"`);
     }
-    const extraReadings = [
-      ...(attribution ? [{ artist: attribution.artist, track: attribution.title }] : []),
-      ...(artTrack ? [{ artist: artTrack.artist, track: artTrack.title }] : []),
-    ];
-    const readings = extraReadings.length > 0
-      ? [...extraReadings, ...titleReadings]
-      : titleReadings;
+    const readings = buildReadings(song.rawTitle, song.channelName, attribution, artTrack);
     const primary = readings[0]!;
     panel.setHeader(primary.track, primary.artist ?? 'unknown artist');
 
