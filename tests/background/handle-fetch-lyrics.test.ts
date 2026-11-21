@@ -198,6 +198,20 @@ describe('handleFetchLyrics — cache behavior', () => {
     expect(result).toMatchObject({ ok: true, record: wonderwall });
   });
 
+  it('rejects a cached original record on revisit when the video is a translated cover', async () => {
+    const s = storage();
+    const original: LrclibRecord = { ...wonderwall, id: 7, trackName: 'Angel With A Shotgun', artistName: 'The Cab', duration: 225 };
+    await s.set({ 'lc:7': original });
+    await writeVideoMeta(s, 'cover1', { lrclibId: 7, offsetSec: 0 });
+    let calls = 0;
+    await handleFetchLyrics(
+      { ...request, videoId: 'cover1', artist: 'The Cab', track: 'Angel With A Shotgun Thai.ver', durationSec: 225 },
+      async () => { calls++; return []; },
+      s,
+    );
+    expect(calls).toBeGreaterThan(0); // cache rejected → searched again
+  });
+
   it('rejects a stale cache entry and re-searches when the cached record no longer matches', async () => {
     const s = storage();
     // Write a VideoMeta pointing at a record that has nothing to do with the

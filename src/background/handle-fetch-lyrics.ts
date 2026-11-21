@@ -2,10 +2,6 @@ import { LrclibRateLimitError } from '../lrclib/client';
 import {
   hasUsableLyrics,
   pickBestScored,
-  scoreCandidates,
-  MATCH_THRESHOLD,
-  MIN_TRACK_SIMILARITY,
-  MIN_ARTIST_SIMILARITY,
   type ScoredCandidate,
 } from '../core/match-scorer';
 import { buildSearchQuery } from '../core/search-query';
@@ -64,24 +60,15 @@ export async function handleFetchLyrics(
         { artist: request.artist, track: request.track },
         ...(request.alternates ?? []),
       ];
-      let bestHitScore = 0;
-      const cacheValid = allReadings.some(({ artist, track }) => {
-        const hit = scoreCandidates(
-          { artist, track, durationSec: request.durationSec },
-          [cached],
-        )[0];
-        if (hit !== undefined && hit.score > bestHitScore) bestHitScore = hit.score;
-        return (
-          hit !== undefined &&
-          hit.score >= MATCH_THRESHOLD &&
-          hit.trackSimilarity >= MIN_TRACK_SIMILARITY &&
-          (hit.artistSimilarity === null || hit.artistSimilarity >= MIN_ARTIST_SIMILARITY)
-        );
-      });
-      if (cacheValid) {
+      // Same gates as a fresh search (pickBestScored), so a rule added there —
+      // e.g. translated covers — also evicts a record cached before it existed.
+      const cacheHit = allReadings
+        .map(({ artist, track }) => pickBestScored({ artist, track, durationSec: request.durationSec }, [cached]))
+        .reduce<ScoredCandidate | null>((best, hit) => (hit && (!best || hit.score > best.score) ? hit : best), null);
+      if (cacheHit) {
         console.log(
           `[karaoke] cache HIT videoId=${request.videoId} "${request.track}"`,
-          `lrclibId=${existingMeta.lrclibId} score=${bestHitScore.toFixed(3)} offsetSec=${existingMeta.offsetSec}`,
+          `lrclibId=${existingMeta.lrclibId} score=${cacheHit.score.toFixed(3)} offsetSec=${existingMeta.offsetSec}`,
         );
         return {
           ok: true,
@@ -94,7 +81,7 @@ export async function handleFetchLyrics(
       console.warn(
         `[karaoke] cache REJECTED videoId=${request.videoId} "${request.track}"`,
         `— cached="${cached.trackName} / ${cached.artistName}" lrclibId=${existingMeta.lrclibId}`,
-        `score=${bestHitScore.toFixed(3)} < threshold=${MATCH_THRESHOLD} → re-searching`,
+        `fails the match gates → re-searching`,
       );
       // Validation failed — fall through to a fresh search rather than
       // serving stale or mismatched lyrics.

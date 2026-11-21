@@ -71,6 +71,34 @@ const VARIANT_PATTERNS = VARIANT_WORDS.map(
   (word) => [word, new RegExp(`\\b${word}\\b`, 'i')] as const,
 );
 
+/**
+ * Audio edits that keep the original song's words: a backing track is what
+ * karaoke is sung over, and a slowed/nightcore edit is the same vocal. Stripped
+ * from the wanted track before scoring, so the vocal record is a match instead
+ * of a variant mismatch ("ความเชื่อ (Instrumental)" was rejected outright).
+ */
+const SAME_LYRICS_EDITS = /\b(?:instrumental|inst|off[\s-]?vocal|karaoke|slowed|reverb|sped[\s-]?up|nightcore)\b\.?|伴奏/gi;
+
+export function stripSameLyricsEdits(track: string): string {
+  return track.replace(SAME_LYRICS_EDITS, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// No \b before Thai: \b only sees ASCII word characters.
+const TRANSLATED_VERSION = [
+  /\b(?:thai|eng(?:lish)?|jp|japanese|chinese|cn|korean|kr)\s*[.\-]?\s*ver(?:sion)?\b/i,
+  /เวอร์ชั่นไทย|เวอร์ชันไทย/,
+];
+
+/**
+ * True for a cover sung in another language ("Thai.ver", "(Thai Version)").
+ * Its words differ from the original's, so the two must never match each
+ * other. Subtitle-only markers (THAISUB, แปลเพลง) are deliberately absent: the
+ * audio there is the original song.
+ */
+export function isTranslatedVersion(text: string): boolean {
+  return TRANSLATED_VERSION.some((pattern) => pattern.test(text));
+}
+
 // NFC per the Thai rule in the design; no tone-mark folding.
 function normalize(text: string): string {
   return text
@@ -131,9 +159,10 @@ export function scoreCandidates(
   input: MatchInput,
   candidates: LrclibRecord[],
 ): ScoredCandidate[] {
+  const wantedTrack = stripSameLyricsEdits(input.track);
   return candidates
     .map((record) => {
-      const trackSimilarity = similarity(input.track, record.trackName);
+      const trackSimilarity = similarity(wantedTrack, record.trackName);
       const artistSimilarity =
         input.artist === null ? null : similarity(input.artist, record.artistName);
 
@@ -142,7 +171,7 @@ export function scoreCandidates(
         WEIGHT_ARTIST * (artistSimilarity ?? NEUTRAL) +
         WEIGHT_DURATION * durationScore(input.durationSec, record.duration);
 
-      if (!sameVariant(input.track, record.trackName)) score -= VARIANT_PENALTY;
+      if (!sameVariant(wantedTrack, record.trackName)) score -= VARIANT_PENALTY;
       if (record.syncedLyrics) score += SYNCED_BONUS;
 
       return { record, score, trackSimilarity, artistSimilarity };
@@ -165,10 +194,14 @@ export function pickBestScored(
   input: MatchInput,
   candidates: LrclibRecord[],
 ): ScoredCandidate | null {
+  const wantsTranslated = isTranslatedVersion(input.track);
   for (const candidate of scoreCandidates(input, candidates)) {
     // Sorted by score descending, so once one falls short none after it clears.
     if (candidate.score < MATCH_THRESHOLD) return null;
     if (candidate.trackSimilarity < MIN_TRACK_SIMILARITY) continue;
+    // A hard skip, not a penalty: "Angel With A Shotgun Thai.ver" still scores
+    // ~0.645 against the English original after the variant penalty.
+    if (isTranslatedVersion(candidate.record.trackName) !== wantsTranslated) continue;
     // Both axes gate independently. One strong axis must not carry a candidate
     // over the line on its own — that is how a self-titled record matched a
     // reading whose track name was really the artist's name.

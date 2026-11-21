@@ -298,3 +298,31 @@ describe('pickBestScored', () => {
     expect(scored?.record.id).toBe(125);
   });
 });
+
+describe('pickBestScored — same-lyrics edits and translated versions', () => {
+  const rec = (trackName: string, artistName: string) => record({ trackName, artistName, duration: 200 });
+  const want = (artist: string, track: string) => ({ artist, track, durationSec: 200 });
+
+  // A backing track is what karaoke is sung over: it wants the vocal record's lyrics.
+  it('matches an instrumental video to the vocal record', () => {
+    expect(pickBestScored(want('Bodyslam', 'ความเชื่อ (Instrumental)'), [rec('ความเชื่อ', 'Bodyslam')])).not.toBeNull();
+  });
+
+  it('matches a 伴奏 (accompaniment) video to the vocal record', () => {
+    expect(pickBestScored(want('一颗狼星', '无人区玫瑰 (伴奏)'), [rec('无人区玫瑰', '一颗狼星')])).not.toBeNull();
+  });
+
+  it('matches a slowed + reverb edit to the original record', () => {
+    expect(pickBestScored(want('фрози', 'supїdo (slowed + reverb)'), [rec('supїdo', 'фрози')])).not.toBeNull();
+  });
+
+  // A translated cover is sung in another language, so the original lyrics are wrong.
+  // A score penalty is not enough here: it still clears the threshold at ~0.645.
+  it('never matches a "Thai.ver" cover to the original record', () => {
+    expect(pickBestScored(want('The Cab', 'Angel With A Shotgun Thai.ver'), [rec('Angel With A Shotgun', 'The Cab')])).toBeNull();
+  });
+
+  it('never matches a "(Thai Version)" cover to the original record', () => {
+    expect(pickBestScored(want('The Cab', 'Angel With A Shotgun (Thai Version)'), [rec('Angel With A Shotgun', 'The Cab')])).toBeNull();
+  });
+});
