@@ -52,51 +52,26 @@ describe('fetchVideoPageSignals', () => {
         album: 'Whenever You Need Somebody',
       },
       artTrack: null,
-      category: 'Music',
-      hasCopyrightNotice: false,
-      hasMusicKeyword: false,
     });
   });
 
-  it('returns both signals independently — category present without attribution', async () => {
+  it('returns null attribution when the page has none', async () => {
     const html = pageWith(null, 'Gaming');
     const fakeFetch = vi.fn(async () => ({ ok: true, text: async () => html }) as Response);
     const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
-    expect(result).toEqual({ attribution: null, artTrack: null, category: 'Gaming', hasCopyrightNotice: false, hasMusicKeyword: false });
+    expect(result).toEqual({ attribution: null, artTrack: null });
   });
 
   it('returns all null when the fetch response is not ok', async () => {
     const fakeFetch = vi.fn(async () => ({ ok: false, text: async () => '' }) as Response);
     const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
-    expect(result).toEqual({ attribution: null, artTrack: null, category: null, hasCopyrightNotice: false, hasMusicKeyword: false });
+    expect(result).toEqual({ attribution: null, artTrack: null });
   });
 
   it('returns all null when the fetch throws (network error, abort, etc.)', async () => {
     const fakeFetch = vi.fn(async () => { throw new Error('offline'); });
     const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
-    expect(result).toEqual({ attribution: null, artTrack: null, category: null, hasCopyrightNotice: false, hasMusicKeyword: false });
-  });
-
-  it('sets hasCopyrightNotice when ℗ appears in shortDescription', async () => {
-    const playerResponse = { videoDetails: { shortDescription: '℗ 2024 GMM Grammy' } };
-    const html =
-      `<script>var ytInitialData = {};</script>` +
-      `<script>var ytInitialPlayerResponse = ${JSON.stringify(playerResponse)};</script>`;
-    const fakeFetch = vi.fn(async () => ({ ok: true, text: async () => html }) as Response);
-    const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
-    expect(result.hasCopyrightNotice).toBe(true);
-    expect(result.hasMusicKeyword).toBe(false);
-  });
-
-  it('sets hasMusicKeyword when keywords contain a music term', async () => {
-    const playerResponse = { videoDetails: { keywords: ['เพลงไทย', 'music', 'pop'] } };
-    const html =
-      `<script>var ytInitialData = {};</script>` +
-      `<script>var ytInitialPlayerResponse = ${JSON.stringify(playerResponse)};</script>`;
-    const fakeFetch = vi.fn(async () => ({ ok: true, text: async () => html }) as Response);
-    const result = await fetchVideoPageSignals('abc', fakeFetch as unknown as typeof fetch);
-    expect(result.hasMusicKeyword).toBe(true);
-    expect(result.hasCopyrightNotice).toBe(false);
+    expect(result).toEqual({ attribution: null, artTrack: null });
   });
 
   it('parses an Art Track description block when present', async () => {

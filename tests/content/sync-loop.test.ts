@@ -33,6 +33,7 @@ function mockPanel(): PanelHandle {
     onScrollPauseToggle: vi.fn(),
     onTapSync: vi.fn(),
     setCollapsed: vi.fn(),
+    setCollapsedLabel: vi.fn(),
     onCollapseChange: vi.fn(),
     showCorrectBar: vi.fn(),
     enterSearchMode: vi.fn(),

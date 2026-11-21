@@ -4,25 +4,20 @@ import {
   type MusicAttribution,
   type ArtTrackAttribution,
 } from '../core/music-attribution';
-import { parseVideoCategory, parseMusicSignals } from '../core/video-category';
 
 export type { MusicAttribution, ArtTrackAttribution };
 
 export interface VideoPageSignals {
   attribution: MusicAttribution | null;
   artTrack: ArtTrackAttribution | null;
-  category: string | null;
-  hasCopyrightNotice: boolean;
-  hasMusicKeyword: boolean;
 }
 
 const FETCH_TIMEOUT_MS = 5000;
 
 /**
- * Fetches the video's own watch page once and extracts both the Music
- * attribution panel and YouTube's own video category from it — one network
- * round-trip serving two independent detection signals (see
- * `core/music-attribution.ts` and `core/video-category.ts`). Runs from the
+ * Fetches the video's own watch page once and extracts the Music attribution
+ * panel and the Art Track description from it (see
+ * `core/music-attribution.ts`). Runs from the
  * content script (same-origin fetch to youtube.com, so no extra
  * host_permissions needed) rather than the background, since it needs no
  * privilege the page itself doesn't already have.
@@ -41,18 +36,14 @@ export async function fetchVideoPageSignals(
     const response = await fetchImpl(`https://www.youtube.com/watch?v=${videoId}`, {
       signal: controller.signal,
     });
-    if (!response.ok) return { attribution: null, artTrack: null, category: null, hasCopyrightNotice: false, hasMusicKeyword: false };
+    if (!response.ok) return { attribution: null, artTrack: null };
     const html = await response.text();
-    const { hasCopyrightNotice, hasMusicKeyword } = parseMusicSignals(html);
     return {
       attribution: parseMusicAttribution(html),
       artTrack: parseArtTrackDescription(html),
-      category: parseVideoCategory(html),
-      hasCopyrightNotice,
-      hasMusicKeyword,
     };
   } catch {
-    return { attribution: null, artTrack: null, category: null, hasCopyrightNotice: false, hasMusicKeyword: false };
+    return { attribution: null, artTrack: null };
   } finally {
     clearTimeout(timeout);
   }

@@ -5,7 +5,6 @@ import { planRender } from './render-plan';
 import { startSyncLoop, type SyncLoopHandle } from './sync-loop';
 import { startAutoScrollLoop, type AutoScrollLoopHandle } from './auto-scroll-loop';
 import { fetchVideoPageSignals } from './music-attribution';
-import { isConfidentlyNonMusic } from '../core/video-category';
 import { parseVideoId } from '../core/youtube-url';
 import { buildReadings } from '../core/readings';
 import type { LyricLine } from '../core/types';
@@ -317,6 +316,7 @@ async function activate(videoId: string): Promise<void> {
   panel.onCandidatePick((record) => {
     panel!.exitSearchMode();
     panel!.setHeader(record.trackName, record.artistName);
+    panel!.setCollapsedLabel('Lyrics');
 
     const plan = planRender(record);
     disposeAll();
@@ -405,7 +405,7 @@ async function activate(videoId: string): Promise<void> {
 async function load(videoId: string, gen: number): Promise<void> {
   isLoading = true;
   try {
-    const [song, { attribution, artTrack, category, hasCopyrightNotice, hasMusicKeyword }] = await Promise.all([
+    const [song, { attribution, artTrack }] = await Promise.all([
       waitForSong(videoId),
       fetchVideoPageSignals(videoId),
     ]);
@@ -438,14 +438,6 @@ async function load(videoId: string, gen: number): Promise<void> {
     const primary = readings[0]!;
     panel.setHeader(primary.track, primary.artist ?? 'unknown artist');
 
-    // Soft category gate (Sprint 5): only a signal, never a hard block. A
-    // Music attribution panel always overrides it; a video with a prior
-    // match is never affected (handled in handleFetchLyrics, not here).
-    const skipSearchIfNonMusic = !attribution && !artTrack && !hasCopyrightNotice && !hasMusicKeyword && isConfidentlyNonMusic(category);
-    if (skipSearchIfNonMusic) {
-      console.log(`[karaoke] category gate: "${song.rawTitle}" is category=${category}`);
-    }
-
     const request: FetchLyricsRequest = {
       type: 'FETCH_LYRICS',
       videoId,
@@ -453,7 +445,6 @@ async function load(videoId: string, gen: number): Promise<void> {
       track: primary.track,
       durationSec: song.durationSec,
       alternates: readings.slice(1),
-      skipSearchIfNonMusic,
     };
 
     let response: FetchLyricsResponse;
@@ -477,10 +468,16 @@ async function load(videoId: string, gen: number): Promise<void> {
       panel.setOffsetControls(false);
       panel.setSpeedControls(false);
       currentSyncedLines = [];
-      if (response.reason === 'not-found' || response.reason === 'category-gated') panel.showCorrectBar(true);
+      if (response.reason === 'not-found') {
+        panel.showCorrectBar(true);
+        // Fold out of the way, but leave panelCollapsed (the user's own
+        // minimize choice) alone so the next video opens the way they left it.
+        panel.setCollapsed(true);
+        panel.setCollapsedLabel('No lyrics found');
+      }
       // Retry only makes sense for a transient failure — repeating the same
-      // lookup after "not found" or a category gate would just fail again
-      // the same way; those need a different search, not a repeat.
+      // lookup after "not found" would just fail again the same way; that
+      // needs a different search, not a repeat.
       panel.showRetry(response.reason === 'network' || response.reason === 'rate-limited');
       return;
     }

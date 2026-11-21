@@ -472,6 +472,15 @@ describe('mountPanel', () => {
       expect(cb).not.toHaveBeenCalled();
     });
 
+    it('setCollapsedLabel changes the collapsed header text without firing onCollapseChange', () => {
+      const panel = mountPanel(host);
+      const cb = vi.fn();
+      panel.onCollapseChange(cb);
+      panel.setCollapsedLabel('No lyrics found');
+      expect(shadowOf(host).querySelector('.kx-header-collapsed-label')!.textContent).toBe('No lyrics found');
+      expect(cb).not.toHaveBeenCalled();
+    });
+
     it('onCollapseChange fires with the new state on click', () => {
       const panel = mountPanel(host);
       const cb = vi.fn();

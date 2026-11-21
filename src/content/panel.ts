@@ -19,8 +19,8 @@ export interface PanelHandle {
   setSearchStatus(message: string): void;
   /** Shows or hides a "Retry" button below the status message — used for
    *  transient failures (network down, rate-limited) where repeating the
-   *  same lookup might succeed, as opposed to not-found/category-gated
-   *  where it never would. */
+   *  same lookup might succeed, as opposed to not-found where it never
+   *  would. */
   showRetry(visible: boolean): void;
   /** Fires when "Retry" is clicked. */
   onRetry(callback: () => void): void;
@@ -81,6 +81,8 @@ export interface PanelHandle {
    *  restore whatever state the panel was in before a same-tab video
    *  navigation remounted it. Does not fire onCollapseChange. */
   setCollapsed(collapsed: boolean): void;
+  /** Sets the header text shown while collapsed. Fires no listener. */
+  setCollapsedLabel(text: string): void;
   /** Replaces the callback fired when the user clicks the minimize/expand
    *  button, with the new collapsed state. */
   onCollapseChange(callback: (collapsed: boolean) => void): void;
@@ -475,6 +477,9 @@ export function mountPanel(container: HTMLElement): PanelHandle {
     },
     setCollapsed(collapsed) {
       applyCollapsed(collapsed);
+    },
+    setCollapsedLabel(text) {
+      find<HTMLElement>('.kx-header-collapsed-label').textContent = text;
     },
     onCollapseChange(callback) {
       collapseChangeListener = callback;

@@ -37,6 +37,7 @@ function mockPanel(extentPx = 1000, initialScrollTop = 0, roundsToInteger = fals
     onScrollPauseToggle: vi.fn(),
     onTapSync: vi.fn(),
     setCollapsed: vi.fn(),
+    setCollapsedLabel: vi.fn(),
     onCollapseChange: vi.fn(),
     showCorrectBar: vi.fn(),
     enterSearchMode: vi.fn(),
