@@ -22,6 +22,7 @@ Real pipeline (`handleFetchLyrics` + live LRCLIB) replayed over the 34 `mix_vide
   - The 1 wrong is the same row as at baseline: `blue — yung kai`. **YouTube's own Music attribution panel labels the official video "blue - yung kai (oiia spinning cat version) / Oiia Cat"** (4/4 fetches), and attribution is deliberately the most trusted reading. Not a search bug; fixing it means distrusting attribution, which is an open design decision.
   - Still missed: 大喜 (title credits the character "Hu Tao", not the singer), 苏幕遮, Lullaby of the New Moon (I), จากฉันถึงเธอ, ถอด, เศษ.
   - Labels grew during acceptance only with **verified duplicates**: same song and artist, same duration ±1s and same first lyric line, checked via `/api/get/{id}`. LRCLIB stores many copies, and which copy wins a tie varies between runs.
+- **After final-review fixes (2026-11-22, two consecutive runs):** `correct=40 wrong=1 miss=7 none-ok=29` in both, with 118–119 requests. Each run's 7th miss is a different known-flaky row (`jzi6RNVEOtA` in run 1, `Flnk4A69_4A` in run 2); each of them hit in the other run. No baseline-correct row failed in both runs. Two more verified duplicates were added to the labels (`XcVmDJSqCNA`, `Z6PQtPL0I6A`: same first lyric line, duration within 2.4s).
   - Tried and reverted: scoring the core readings only as a fallback. It fixed nothing real (the "ดาว" case was a duplicate) and made `A Moment — Zweed n' Roll` pick the 296s duet re-recording over the 317s solo.
 
 ## LRCLIB facts (scouted)
